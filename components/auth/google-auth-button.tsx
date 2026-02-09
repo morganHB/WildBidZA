@@ -4,6 +4,7 @@ import { useState } from "react";
 import { LoaderCircle } from "lucide-react";
 import { toast } from "sonner";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { buildBrowserRedirectUrl } from "@/lib/auth/redirect";
 import { Button } from "@/components/ui/button";
 
 export function GoogleAuthButton({ mode }: { mode: "signin" | "signup" }) {
@@ -13,7 +14,7 @@ export function GoogleAuthButton({ mode }: { mode: "signin" | "signup" }) {
     setLoading(true);
     try {
       const supabase = createSupabaseBrowserClient();
-      const redirectTo = `${window.location.origin}/auth/callback?next=/dashboard`;
+      const redirectTo = buildBrowserRedirectUrl("/auth/callback?next=/dashboard");
 
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",

@@ -8,6 +8,7 @@ import { Eye, EyeOff, LoaderCircle } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { buildBrowserRedirectUrl } from "@/lib/auth/redirect";
 import { signUpSchema, type SignUpInput } from "@/lib/validation/auth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -34,7 +35,7 @@ export function SignUpForm() {
 
   const onSubmit = form.handleSubmit(async (values) => {
     const supabase = createSupabaseBrowserClient();
-    const redirectTo = `${window.location.origin}/auth/callback?next=/dashboard`;
+    const redirectTo = buildBrowserRedirectUrl("/auth/callback?next=/dashboard");
 
     const { data, error } = await supabase.auth.signUp({
       email: values.email,
@@ -54,16 +55,21 @@ export function SignUpForm() {
       return;
     }
 
-    if (data.user) {
+    if (data.user && data.session) {
       await fetch("/api/profile", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ display_name: values.displayName }),
       }).catch(() => undefined);
+
+      toast.success("Account created. Complete your profile while waiting for approval.");
+      router.push("/dashboard");
+      router.refresh();
+      return;
     }
 
-    toast.success("Account created. Complete your profile while waiting for approval.");
-    router.push("/dashboard");
+    toast.success("Account created. Check your email and confirm your account, then sign in.");
+    router.push("/sign-in?verify=1");
     router.refresh();
   });
 

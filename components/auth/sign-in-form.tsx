@@ -15,7 +15,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { GoogleAuthButton } from "@/components/auth/google-auth-button";
 
-export function SignInForm() {
+export function SignInForm({
+  verifyRequested = false,
+  authError = false,
+}: {
+  verifyRequested?: boolean;
+  authError?: boolean;
+}) {
   const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
 
@@ -51,6 +57,16 @@ export function SignInForm() {
         <CardDescription>Sign in to continue bidding on verified South African auctions.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
+        {verifyRequested ? (
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900 dark:border-emerald-900/40 dark:bg-emerald-950/30 dark:text-emerald-200">
+            Check your inbox and click the confirmation link, then sign in.
+          </div>
+        ) : null}
+        {authError ? (
+          <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-900 dark:border-red-900/40 dark:bg-red-950/30 dark:text-red-200">
+            Auth link is invalid or expired. Please request a fresh link and try again.
+          </div>
+        ) : null}
         <GoogleAuthButton mode="signin" />
         <div className="relative text-center text-xs text-slate-500">
           <span className="bg-card px-2">or continue with email</span>

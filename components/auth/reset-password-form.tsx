@@ -5,6 +5,7 @@ import { LoaderCircle } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { buildBrowserRedirectUrl } from "@/lib/auth/redirect";
 import { resetPasswordSchema, type ResetPasswordInput } from "@/lib/validation/auth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,7 +20,7 @@ export function ResetPasswordForm() {
 
   const onSubmit = form.handleSubmit(async (values) => {
     const supabase = createSupabaseBrowserClient();
-    const redirectTo = `${window.location.origin}/sign-in`;
+    const redirectTo = buildBrowserRedirectUrl("/sign-in");
 
     const { error } = await supabase.auth.resetPasswordForEmail(values.email, {
       redirectTo,
