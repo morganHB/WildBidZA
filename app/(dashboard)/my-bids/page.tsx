@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatZar } from "@/lib/utils/currency";
 import { requireAuthPage } from "@/lib/auth/guard";
@@ -37,6 +38,11 @@ export default async function MyBidsPage() {
                     : "Auction ended"
                   : "Auction active"}
               </p>
+              {row.auction.status === "ended" && row.auction.winner_user_id === user.id ? (
+                <Button asChild size="sm" variant="outline">
+                  <Link href={`/deals/${row.auction.id}`}>Message seller</Link>
+                </Button>
+              ) : null}
             </CardContent>
           </Card>
         ))

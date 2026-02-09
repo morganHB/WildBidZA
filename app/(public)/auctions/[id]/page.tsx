@@ -1,9 +1,11 @@
 import { notFound } from "next/navigation";
+import Link from "next/link";
 import { AuctionGallery } from "@/components/auctions/auction-gallery";
 import { AuctionLiveSection } from "@/components/auctions/auction-live-section";
 import { AuctionStatusBadge } from "@/components/auctions/status-badge";
 import { WatchToggle } from "@/components/auctions/watch-toggle";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { isApprovedBidder } from "@/lib/auth/roles";
 import { getAuthContext } from "@/lib/auth/guard";
@@ -23,6 +25,10 @@ export default async function AuctionDetailPage({ params }: { params: Promise<{ 
   const canBid = isApprovedBidder(context.profile);
   const leadingBidderId = auction.bids?.[0]?.bidder_id;
   const isWinning = Boolean(context.user?.id && context.user.id === leadingBidderId);
+  const canOpenDealChat =
+    auction.status === "ended" &&
+    Boolean(context.user?.id) &&
+    (context.user?.id === auction.winner_user_id || context.user?.id === auction.seller_id);
 
   return (
     <main className="mx-auto w-full max-w-7xl space-y-6 px-4 py-8 sm:px-6 lg:px-8">
@@ -122,6 +128,11 @@ export default async function AuctionDetailPage({ params }: { params: Promise<{ 
       {auction.status === "ended" && auction.winner_user_id ? (
         <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800 shadow-sm dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-100">
           Auction ended. Winner: {auction.bids.find((bid: any) => bid.bidder_id === auction.winner_user_id)?.bidder_name ?? "Winner"}.
+          {canOpenDealChat ? (
+            <Button asChild variant="outline" size="sm" className="ml-3 border-emerald-300 bg-white/80 text-emerald-800 hover:bg-white">
+              <Link href={`/deals/${auction.id}`}>Open deal chat</Link>
+            </Button>
+          ) : null}
         </div>
       ) : null}
     </main>

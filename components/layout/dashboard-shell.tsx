@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CircleUserRound, Gavel, Heart, LayoutDashboard, List, Shield } from "lucide-react";
+import { CircleUserRound, Gavel, Heart, LayoutDashboard, List, MessageSquareMore, Shield } from "lucide-react";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { isAdmin, isApprovedSeller } from "@/lib/auth/roles";
 import { APP_NAME } from "@/lib/constants/app";
@@ -21,6 +21,7 @@ export async function DashboardShell({ children }: { children: React.ReactNode }
   const baseItems = [
     { href: "/dashboard", icon: LayoutDashboard, label: "Overview" },
     { href: "/my-bids", icon: Gavel, label: "My bids" },
+    { href: "/deals", icon: MessageSquareMore, label: "Deal chats" },
     { href: "/watchlist", icon: Heart, label: "Watchlist" },
     { href: "/settings", icon: CircleUserRound, label: "Settings" },
   ];

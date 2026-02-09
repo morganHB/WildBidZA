@@ -202,6 +202,48 @@ export type Database = {
         };
         Update: never;
       };
+      auction_conversations: {
+        Row: {
+          id: string;
+          auction_id: string;
+          seller_id: string;
+          winner_id: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          auction_id: string;
+          seller_id: string;
+          winner_id: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          seller_id?: string;
+          winner_id?: string;
+          updated_at?: string;
+        };
+      };
+      auction_messages: {
+        Row: {
+          id: string;
+          conversation_id: string;
+          auction_id: string;
+          sender_id: string;
+          message: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          conversation_id: string;
+          auction_id: string;
+          sender_id: string;
+          message: string;
+          created_at?: string;
+        };
+        Update: never;
+      };
       settings: {
         Row: {
           id: number;

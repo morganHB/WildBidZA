@@ -1,6 +1,8 @@
 import { notFound } from "next/navigation";
+import Link from "next/link";
 import { AuctionGallery } from "@/components/auctions/auction-gallery";
 import { EditAuctionForm } from "@/components/seller/edit-auction-form";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireSellerPage } from "@/lib/auth/guard";
 import { getActiveCategories, getAuctionById, getSiteSettings } from "@/lib/auctions/queries";
@@ -67,6 +69,11 @@ export default async function SellerListingDetailPage({ params }: { params: Prom
             <p>Sex: {auction.sex ? `${auction.sex.charAt(0).toUpperCase()}${auction.sex.slice(1)}` : "-"}</p>
             <p>Starts: {new Date(auction.start_time).toLocaleString("en-ZA")}</p>
             <p>Ends: {new Date(auction.end_time).toLocaleString("en-ZA")}</p>
+            {auction.status === "ended" && auction.winner_user_id ? (
+              <Button asChild className="mt-3 w-full" variant="outline">
+                <Link href={`/deals/${auction.id}`}>Open winner chat</Link>
+              </Button>
+            ) : null}
           </CardContent>
         </Card>
       </div>

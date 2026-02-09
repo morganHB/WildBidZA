@@ -9,7 +9,7 @@ Production-ready online auction platform for South African livestock/game-style 
 - Supabase Auth (email/password + Google OAuth)
 - Supabase Postgres + RLS + RPC
 - Supabase Storage (auction images)
-- Supabase Realtime (bids + notifications)
+- Supabase Realtime (bids + notifications + deal chat messages)
 - Vercel hosting target
 
 ## Core Capabilities
@@ -21,6 +21,7 @@ Production-ready online auction platform for South African livestock/game-style 
 - Live bid updates with secure RPC bid placement
 - Anti-sniping settings (`sniping_window_minutes`, `extension_minutes`)
 - Auction finalization job with winner + notifications
+- Post-auction winner/seller deal chat for payment + logistics coordination
 - Admin modules: approvals, seller grants, categories, settings, moderation, audit log
 - Image upload flow with true crop output (1:1, 4:5, 16:9), reorder, and Storage persistence
 
@@ -45,16 +46,16 @@ app/
   (public)/...
   (auth)/...
   (dashboard)/...
-  api/... (auctions, seller, admin, profile, notifications)
+  api/... (auctions, seller, admin, profile, notifications, deals)
 components/
-  auctions/, auth/, seller/, admin/, layout/, ui/
+  auctions/, auth/, seller/, admin/, deals/, layout/, ui/
 lib/
-  auctions/, auth/, constants/, notifications/, supabase/, utils/, validation/
+  auctions/, auth/, constants/, deals/, notifications/, supabase/, utils/, validation/
 hooks/
   use-server-time.ts, use-realtime-bids.ts
 supabase/
   config.toml
-  migrations/0001..0010
+  migrations/0001..0011
   seed.sql
 scripts/
   verify-env.ts
@@ -156,6 +157,7 @@ npm run seed:admin
   - marks auction as `ended`
   - sets winner + winning bid
   - creates winner notification
+  - creates/updates winner-seller deal conversation
 
 ## Storage and Image Policy
 
@@ -229,6 +231,7 @@ For Google OAuth provider configuration, ensure the same callback base URL is al
 - Live bid updates visible in real-time on detail page
 - Anti-sniping extends auction when configured threshold is hit
 - Ended auction is locked and winner shown
+- Winner and seller can open `/deals/[auctionId]` and exchange messages
 - Cropped/reordered images persist to Storage + DB
 - Admin settings persist and affect behavior
 
