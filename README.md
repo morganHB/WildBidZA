@@ -54,7 +54,7 @@ hooks/
   use-server-time.ts, use-realtime-bids.ts
 supabase/
   config.toml
-  migrations/0001..0009
+  migrations/0001..0010
   seed.sql
 scripts/
   verify-env.ts
@@ -176,13 +176,49 @@ npm run build
 
 1. Push repo to Git provider.
 2. Create Vercel project and connect repo.
-3. Set environment variables in Vercel:
+3. Set **Production Branch** in Vercel project settings to `live`.
+4. Set environment variables in Vercel:
    - `NEXT_PUBLIC_SUPABASE_URL`
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
    - `SUPABASE_SERVICE_ROLE_KEY`
    - `NEXT_PUBLIC_APP_URL=https://<your-vercel-domain>`
-4. Deploy.
-5. Add Vercel callback URL in Supabase Auth redirects.
+5. Deploy.
+6. Add Vercel callback URL in Supabase Auth redirects.
+
+The repository includes `vercel.json` with branch deployment rules:
+- `live` auto deployments: enabled
+- `main` auto deployments: disabled
+
+This supports your workflow of developing on `main` and only publishing to production from `live`.
+
+## Vercel CLI (Optional)
+
+If you want CLI-based setup/deploy, authenticate first:
+
+```bash
+vercel login
+```
+
+Or use a token in CI/non-interactive mode:
+
+```bash
+vercel --token <VERCEL_TOKEN>
+```
+
+Then link and deploy:
+
+```bash
+vercel link
+vercel --prod
+```
+
+## Supabase OAuth Redirects For Production
+
+Add both URLs in Supabase Auth settings:
+- `https://<your-vercel-domain>/auth/callback`
+- `http://localhost:3000/auth/callback`
+
+For Google OAuth provider configuration, ensure the same callback base URL is allowed in Google Cloud Console.
 
 ## Acceptance Validation Checklist
 
