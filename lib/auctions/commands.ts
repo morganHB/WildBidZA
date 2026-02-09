@@ -124,6 +124,7 @@ export async function adminUpdateUserStatus(params: {
   userId: string;
   approval_status?: "pending" | "approved" | "rejected";
   seller_status?: "none" | "approved";
+  is_admin?: boolean;
 }) {
   const supabase = await createSupabaseServerClient();
 
@@ -132,6 +133,7 @@ export async function adminUpdateUserStatus(params: {
     .update({
       ...(params.approval_status ? { approval_status: params.approval_status } : {}),
       ...(params.seller_status ? { seller_status: params.seller_status } : {}),
+      ...(typeof params.is_admin === "boolean" ? { is_admin: params.is_admin } : {}),
       updated_at: new Date().toISOString(),
     })
     .eq("id", params.userId);
@@ -148,6 +150,7 @@ export async function adminUpdateUserStatus(params: {
     metadata: {
       approval_status: params.approval_status,
       seller_status: params.seller_status,
+      is_admin: params.is_admin,
     },
   });
 }

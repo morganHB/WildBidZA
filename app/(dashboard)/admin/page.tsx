@@ -33,6 +33,7 @@ export default async function AdminPage() {
       </div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <Button asChild variant="outline"><Link href="/admin/approvals">Approvals queue</Link></Button>
+        <Button asChild variant="outline"><Link href="/admin/roles">Role groups</Link></Button>
         <Button asChild variant="outline"><Link href="/admin/sellers">Seller permissions</Link></Button>
         <Button asChild variant="outline"><Link href="/admin/categories">Categories</Link></Button>
         <Button asChild variant="outline"><Link href="/admin/auctions">Auction moderation</Link></Button>
