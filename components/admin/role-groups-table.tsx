@@ -10,21 +10,21 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 type ApprovalStatus = "pending" | "approved" | "rejected";
-type SellerStatus = "none" | "approved";
+type RoleGroup = "user" | "marketer";
 
 type RoleRow = {
   id: string;
   display_name: string | null;
   email: string | null;
   approval_status: ApprovalStatus;
-  seller_status: SellerStatus;
+  role_group: RoleGroup;
   is_admin: boolean;
   created_at: string;
 };
 
 type EditableRoleState = {
   approval_status: ApprovalStatus;
-  seller_status: SellerStatus;
+  role_group: RoleGroup;
   is_admin: boolean;
 };
 
@@ -37,7 +37,7 @@ export function RoleGroupsTable({ rows, currentUserId }: { rows: RoleRow[]; curr
         row.id,
         {
           approval_status: row.approval_status,
-          seller_status: row.seller_status,
+          role_group: row.role_group,
           is_admin: row.is_admin,
         },
       ]),
@@ -51,7 +51,7 @@ export function RoleGroupsTable({ rows, currentUserId }: { rows: RoleRow[]; curr
           row.id,
           {
             approval_status: row.approval_status,
-            seller_status: row.seller_status,
+            role_group: row.role_group,
             is_admin: row.is_admin,
           },
         ]),
@@ -114,7 +114,7 @@ export function RoleGroupsTable({ rows, currentUserId }: { rows: RoleRow[]; curr
           <TableHead>User</TableHead>
           <TableHead>Email</TableHead>
           <TableHead>Approval</TableHead>
-          <TableHead>Seller</TableHead>
+          <TableHead>Role group</TableHead>
           <TableHead>Admin</TableHead>
           <TableHead>Created</TableHead>
           <TableHead className="text-right">Save</TableHead>
@@ -124,14 +124,14 @@ export function RoleGroupsTable({ rows, currentUserId }: { rows: RoleRow[]; curr
         {rows.map((row) => {
           const current = state[row.id] ?? {
             approval_status: row.approval_status,
-            seller_status: row.seller_status,
+            role_group: row.role_group,
             is_admin: row.is_admin,
           };
           const original = originalById.get(row.id);
           const hasChanges =
             original &&
             (current.approval_status !== original.approval_status ||
-              current.seller_status !== original.seller_status ||
+              current.role_group !== original.role_group ||
               current.is_admin !== original.is_admin);
           const isSelf = row.id === currentUserId;
 
@@ -158,15 +158,15 @@ export function RoleGroupsTable({ rows, currentUserId }: { rows: RoleRow[]; curr
               </TableCell>
               <TableCell className="min-w-[160px]">
                 <Select
-                  value={current.seller_status}
-                  onValueChange={(value) => updateRoleState(row.id, "seller_status", value as SellerStatus)}
+                  value={current.role_group}
+                  onValueChange={(value) => updateRoleState(row.id, "role_group", value as RoleGroup)}
                 >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">None</SelectItem>
-                    <SelectItem value="approved">Approved</SelectItem>
+                    <SelectItem value="user">User (buy only)</SelectItem>
+                    <SelectItem value="marketer">Marketer (buy + sell)</SelectItem>
                   </SelectContent>
                 </Select>
               </TableCell>

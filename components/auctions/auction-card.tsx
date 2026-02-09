@@ -3,10 +3,11 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { ArrowUpRight, Clock3, MapPin } from "lucide-react";
+import { ArrowUpRight, Clock3, MapPin, PlayCircle } from "lucide-react";
 import { formatAuctionDate, relativeFromNow } from "@/lib/utils/datetime";
 import { formatZar } from "@/lib/utils/currency";
 import { AuctionStatusBadge } from "@/components/auctions/status-badge";
+import { TrimmedVideo } from "@/components/auctions/trimmed-video";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 
@@ -21,14 +22,26 @@ export type AuctionCardData = {
   city?: string | null;
   category?: { name?: string | null } | null;
   images?: { storage_path: string }[];
+  videos?: {
+    storage_path: string;
+    trim_start_seconds: number;
+    trim_end_seconds: number | null;
+    muted: boolean;
+  }[];
 };
 
 export function AuctionCard({ auction }: { auction: AuctionCardData }) {
   const imagePath = auction.images?.[0]?.storage_path;
+  const video = auction.videos?.[0];
   const fallback = "https://images.unsplash.com/photo-1500595046743-cd271d694d30?auto=format&fit=crop&w=1200&q=80";
   const imageUrl = imagePath
     ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/auction-images/${imagePath}`
     : fallback;
+  const videoUrl = video
+    ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/auction-images/${video.storage_path}`
+    : null;
+  const videoTrimStart = video?.trim_start_seconds ?? 0;
+  const videoTrimEnd = video?.trim_end_seconds ?? null;
   const [source, setSource] = useState(imageUrl);
 
   useEffect(() => {
@@ -46,18 +59,45 @@ export function AuctionCard({ auction }: { auction: AuctionCardData }) {
     <Card className="group overflow-hidden rounded-3xl border-slate-200/90 bg-white/95 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-brand-100/60 dark:border-slate-800 dark:bg-slate-950/80 dark:hover:shadow-none">
       <Link href={`/auctions/${auction.id}`} className="block">
         <div className="relative aspect-[5/4] overflow-hidden">
-          <Image
-            src={source}
-            alt={auction.title}
-            fill
-            className="object-cover transition duration-500 group-hover:scale-105"
-            sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-            onError={() => setSource(fallback)}
-          />
+          {imagePath ? (
+            <Image
+              src={source}
+              alt={auction.title}
+              fill
+              className="object-cover transition duration-500 group-hover:scale-105"
+              sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+              onError={() => setSource(fallback)}
+            />
+          ) : videoUrl ? (
+            <TrimmedVideo
+              src={videoUrl}
+              className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+              controls={false}
+              muted
+              autoPlay
+              loop
+              startSeconds={videoTrimStart}
+              endSeconds={videoTrimEnd}
+              poster={fallback}
+            />
+          ) : (
+            <Image
+              src={fallback}
+              alt={auction.title}
+              fill
+              className="object-cover transition duration-500 group-hover:scale-105"
+              sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+            />
+          )}
           <div className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-full bg-white/95 px-2.5 py-1 text-[11px] font-semibold text-slate-700 shadow-sm dark:bg-slate-950/90 dark:text-slate-200">
             <Clock3 className="h-3 w-3 text-brand-600" />
             {timingLabel}
           </div>
+          {!imagePath && videoUrl ? (
+            <div className="absolute bottom-3 left-3 inline-flex items-center gap-1 rounded-full bg-black/70 px-2.5 py-1 text-[11px] font-semibold text-white">
+              <PlayCircle className="h-3 w-3" /> Video
+            </div>
+          ) : null}
           <div className="absolute right-3 top-3">
             <AuctionStatusBadge status={auction.status} />
           </div>

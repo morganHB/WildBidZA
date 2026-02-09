@@ -1,5 +1,6 @@
 export type ApprovalStatus = "pending" | "approved" | "rejected";
 export type SellerStatus = "none" | "approved";
+export type RoleGroup = "user" | "marketer";
 export type AuctionStatus = "upcoming" | "live" | "ended";
 
 export type NotificationType =
@@ -25,6 +26,14 @@ export type AuctionImageInput = {
   sort_order: number;
 };
 
+export type AuctionVideoInput = {
+  storage_path: string;
+  sort_order: number;
+  trim_start_seconds: number;
+  trim_end_seconds?: number | null;
+  muted: boolean;
+};
+
 export type CreateAuctionPayload = {
   title: string;
   description: string;
@@ -47,6 +56,7 @@ export type CreateAuctionPayload = {
   start_time: string;
   end_time: string;
   images: AuctionImageInput[];
+  videos: AuctionVideoInput[];
 };
 
 export type UpdateAuctionPayload = Partial<CreateAuctionPayload> & {

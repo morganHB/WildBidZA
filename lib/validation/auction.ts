@@ -6,6 +6,14 @@ export const auctionImageSchema = z.object({
   sort_order: z.number().int().min(0),
 });
 
+export const auctionVideoSchema = z.object({
+  storage_path: z.string().min(1),
+  sort_order: z.number().int().min(0),
+  trim_start_seconds: z.number().min(0),
+  trim_end_seconds: z.number().positive().nullable().optional(),
+  muted: z.boolean(),
+});
+
 const auctionSexSchema = z.enum(["male", "female"]);
 
 const auctionBaseSchema = z.object({
@@ -33,7 +41,8 @@ const auctionBaseSchema = z.object({
   reserve_price: z.number().positive().optional().nullable(),
   start_time: z.string().datetime(),
   end_time: z.string().datetime(),
-  images: z.array(auctionImageSchema).max(8),
+  images: z.array(auctionImageSchema).max(8).default([]),
+  videos: z.array(auctionVideoSchema).max(3).default([]),
 });
 
 export const createAuctionSchema = auctionBaseSchema
@@ -48,6 +57,18 @@ export const createAuctionSchema = auctionBaseSchema
   .refine((data) => !data.reserve_price || data.reserve_price >= data.starting_bid, {
     message: "Reserve price must be equal to or above starting bid",
     path: ["reserve_price"],
+  })
+  .refine((data) => data.images.length + data.videos.length > 0, {
+    message: "Add at least one image or video",
+    path: ["images"],
+  })
+  .refine((data) => {
+    return data.videos.every((video) => {
+      return video.trim_end_seconds == null || video.trim_end_seconds > video.trim_start_seconds;
+    });
+  }, {
+    message: "Video trim end must be after trim start",
+    path: ["videos"],
   });
 
 export const updateAuctionSchema = auctionBaseSchema
@@ -83,6 +104,21 @@ export const updateAuctionSchema = auctionBaseSchema
     {
       message: "Reserve price must be equal to or above starting bid",
       path: ["reserve_price"],
+    },
+  )
+  .refine(
+    (data) => {
+      if (!data.videos) {
+        return true;
+      }
+
+      return data.videos.every((video) => {
+        return video.trim_end_seconds == null || video.trim_end_seconds > video.trim_start_seconds;
+      });
+    },
+    {
+      message: "Video trim end must be after trim start",
+      path: ["videos"],
     },
   );
 

@@ -8,6 +8,13 @@ type AuctionSummary = AuctionRow & {
   category: { id: string; name: string } | null;
   seller: { id: string; display_name: string | null } | null;
   images: { storage_path: string; sort_order: number }[];
+  videos: {
+    storage_path: string;
+    sort_order: number;
+    trim_start_seconds: number;
+    trim_end_seconds: number | null;
+    muted: boolean;
+  }[];
   current_price: number;
   is_favorited: boolean;
 };
@@ -69,7 +76,8 @@ export async function getAuctions(filters: AuctionListFilter, userId?: string | 
       *,
       category:animal_categories(id,name),
       seller:profiles!auctions_seller_id_fkey(id,display_name),
-      images:auction_images(storage_path,sort_order)
+      images:auction_images(storage_path,sort_order),
+      videos:auction_videos(storage_path,sort_order,trim_start_seconds,trim_end_seconds,muted)
     `,
     )
     .eq("is_active", true)
@@ -122,6 +130,13 @@ export async function getAuctions(filters: AuctionListFilter, userId?: string | 
     category: { id: string; name: string } | null;
     seller: { id: string; display_name: string | null } | null;
     images: { storage_path: string; sort_order: number }[];
+    videos: {
+      storage_path: string;
+      sort_order: number;
+      trim_start_seconds: number;
+      trim_end_seconds: number | null;
+      muted: boolean;
+    }[];
   })[];
 
   const filteredByStatus =
@@ -169,6 +184,7 @@ export async function getAuctions(filters: AuctionListFilter, userId?: string | 
     current_price: highestByAuction.get(row.id) ?? row.starting_bid,
     is_favorited: favorites.has(row.id),
     images: [...(row.images ?? [])].sort((a, b) => a.sort_order - b.sort_order),
+    videos: [...(row.videos ?? [])].sort((a, b) => a.sort_order - b.sort_order),
   })) satisfies AuctionSummary[];
 }
 
@@ -182,7 +198,8 @@ export async function getAuctionById(auctionId: string, userId?: string | null) 
       *,
       category:animal_categories(id,name,description),
       seller:profiles!auctions_seller_id_fkey(id,display_name),
-      images:auction_images(id,storage_path,sort_order,created_at)
+      images:auction_images(id,storage_path,sort_order,created_at),
+      videos:auction_videos(id,storage_path,sort_order,trim_start_seconds,trim_end_seconds,muted,created_at)
     `,
     )
     .eq("id", auctionId)
@@ -243,6 +260,17 @@ export async function getAuctionById(auctionId: string, userId?: string | null) 
     images: [
       ...((auction.images as { id: string; storage_path: string; sort_order: number; created_at: string }[]) ?? []),
     ].sort((a, b) => a.sort_order - b.sort_order),
+    videos: [
+      ...((auction.videos as {
+        id: string;
+        storage_path: string;
+        sort_order: number;
+        trim_start_seconds: number;
+        trim_end_seconds: number | null;
+        muted: boolean;
+        created_at: string;
+      }[]) ?? []),
+    ].sort((a, b) => a.sort_order - b.sort_order),
   };
 }
 
@@ -292,7 +320,8 @@ export async function getWatchlist(userId: string) {
         start_time,
         end_time,
         starting_bid,
-        images:auction_images(storage_path,sort_order)
+        images:auction_images(storage_path,sort_order),
+        videos:auction_videos(storage_path,sort_order,trim_start_seconds,trim_end_seconds,muted)
       )
     `,
     )
@@ -316,6 +345,7 @@ export async function getSellerListings(sellerId: string) {
       *,
       category:animal_categories(name),
       images:auction_images(storage_path,sort_order),
+      videos:auction_videos(storage_path,sort_order,trim_start_seconds,trim_end_seconds,muted),
       bids:bids!bids_auction_id_fkey(amount)
     `,
     )
@@ -337,6 +367,15 @@ export async function getSellerListings(sellerId: string) {
       images: [...((row.images as { storage_path: string; sort_order: number }[]) ?? [])].sort(
         (a, b) => a.sort_order - b.sort_order,
       ),
+      videos: [
+        ...((row.videos as {
+          storage_path: string;
+          sort_order: number;
+          trim_start_seconds: number;
+          trim_end_seconds: number | null;
+          muted: boolean;
+        }[]) ?? []),
+      ].sort((a, b) => a.sort_order - b.sort_order),
     };
   });
 }

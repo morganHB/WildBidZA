@@ -2,6 +2,7 @@ import type {
   ApprovalStatus,
   AuctionStatus,
   NotificationType,
+  RoleGroup,
   SellerStatus,
 } from "@/types/app";
 
@@ -25,6 +26,7 @@ export type Database = {
           province: string | null;
           approval_status: ApprovalStatus;
           seller_status: SellerStatus;
+          role_group: RoleGroup;
           is_admin: boolean;
           created_at: string;
           updated_at: string;
@@ -37,6 +39,7 @@ export type Database = {
           province?: string | null;
           approval_status?: ApprovalStatus;
           seller_status?: SellerStatus;
+          role_group?: RoleGroup;
           is_admin?: boolean;
           created_at?: string;
           updated_at?: string;
@@ -48,6 +51,7 @@ export type Database = {
           province?: string | null;
           approval_status?: ApprovalStatus;
           seller_status?: SellerStatus;
+          role_group?: RoleGroup;
           is_admin?: boolean;
           updated_at?: string;
         };
@@ -183,6 +187,35 @@ export type Database = {
         Update: {
           storage_path?: string;
           sort_order?: number;
+        };
+      };
+      auction_videos: {
+        Row: {
+          id: string;
+          auction_id: string;
+          storage_path: string;
+          sort_order: number;
+          trim_start_seconds: number;
+          trim_end_seconds: number | null;
+          muted: boolean;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          auction_id: string;
+          storage_path: string;
+          sort_order: number;
+          trim_start_seconds?: number;
+          trim_end_seconds?: number | null;
+          muted?: boolean;
+          created_at?: string;
+        };
+        Update: {
+          storage_path?: string;
+          sort_order?: number;
+          trim_start_seconds?: number;
+          trim_end_seconds?: number | null;
+          muted?: boolean;
         };
       };
       bids: {
@@ -350,10 +383,18 @@ export type Database = {
         };
         Returns: undefined;
       };
+      upsert_auction_videos: {
+        Args: {
+          p_auction_id: string;
+          p_videos: Json;
+        };
+        Returns: undefined;
+      };
     };
     Enums: {
       approval_status: ApprovalStatus;
       seller_status: SellerStatus;
+      role_group: RoleGroup;
       auction_status: AuctionStatus;
       notification_type: NotificationType;
     };

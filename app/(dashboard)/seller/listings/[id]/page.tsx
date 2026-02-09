@@ -27,7 +27,7 @@ export default async function SellerListingDetailPage({ params }: { params: Prom
       <h1 className="text-2xl font-semibold tracking-tight">{auction.title}</h1>
       <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
         <div className="space-y-6">
-          <AuctionGallery images={auction.images} />
+          <AuctionGallery images={auction.images} videos={auction.videos} />
           <EditAuctionForm
             auction={{
               id: auction.id,
@@ -51,6 +51,7 @@ export default async function SellerListingDetailPage({ params }: { params: Prom
               reserve_price: auction.reserve_price,
               start_time: auction.start_time,
               end_time: auction.end_time,
+              videos: auction.videos,
             }}
             categories={categories as { id: string; name: string }[]}
             maxImagesPerAuction={settings.max_images_per_auction}
@@ -64,6 +65,7 @@ export default async function SellerListingDetailPage({ params }: { params: Prom
             <p>Status: {auction.status}</p>
             <p>Current bid: {formatZar(auction.current_price)}</p>
             <p>Bid count: {auction.bid_count}</p>
+            <p>Videos: {auction.videos?.length ?? 0}</p>
             <p>Animals in lot: {auction.animal_count ?? 1}</p>
             <p>Average weight: {auction.avg_weight_kg ? `${auction.avg_weight_kg} kg` : "-"}</p>
             <p>Sex: {auction.sex ? `${auction.sex.charAt(0).toUpperCase()}${auction.sex.slice(1)}` : "-"}</p>

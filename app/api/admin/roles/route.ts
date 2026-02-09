@@ -15,8 +15,8 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ ok: false, error: "Invalid approval status" }, { status: 400 });
     }
 
-    if (!["none", "approved"].includes(body.seller_status)) {
-      return NextResponse.json({ ok: false, error: "Invalid seller status" }, { status: 400 });
+    if (!["user", "marketer"].includes(body.role_group)) {
+      return NextResponse.json({ ok: false, error: "Invalid role group" }, { status: 400 });
     }
 
     if (typeof body.is_admin !== "boolean") {
@@ -34,7 +34,7 @@ export async function PATCH(request: Request) {
       actorId: user.id,
       userId: body.userId,
       approval_status: body.approval_status,
-      seller_status: body.seller_status,
+      role_group: body.role_group,
       is_admin: body.is_admin,
     });
 

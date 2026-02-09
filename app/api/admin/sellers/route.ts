@@ -19,6 +19,7 @@ export async function PATCH(request: Request) {
       actorId: user.id,
       userId: body.userId,
       seller_status: body.seller_status,
+      role_group: body.seller_status === "approved" ? "marketer" : "user",
     });
 
     return NextResponse.json({ ok: true, data: { userId: body.userId } });

@@ -3,7 +3,9 @@ import { createSignedUploadUrl } from "@/lib/auctions/commands";
 import { requireSellerContext } from "@/lib/auth/guard";
 
 const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const ALLOWED_VIDEO_TYPES = new Set(["video/mp4", "video/webm", "video/quicktime"]);
 const MAX_IMAGE_SIZE = 8 * 1024 * 1024;
+const MAX_VIDEO_SIZE = 80 * 1024 * 1024;
 
 export async function POST(request: Request) {
   try {
@@ -14,12 +16,21 @@ export async function POST(request: Request) {
     const contentType = typeof body.contentType === "string" ? body.contentType : "";
     const size = Number(body.size ?? 0);
 
-    if (!ALLOWED_IMAGE_TYPES.has(contentType)) {
-      return NextResponse.json({ ok: false, error: "Unsupported image format" }, { status: 400 });
+    const isImage = ALLOWED_IMAGE_TYPES.has(contentType);
+    const isVideo = ALLOWED_VIDEO_TYPES.has(contentType);
+
+    if (!isImage && !isVideo) {
+      return NextResponse.json({ ok: false, error: "Unsupported file format" }, { status: 400 });
     }
 
-    if (!Number.isFinite(size) || size <= 0 || size > MAX_IMAGE_SIZE) {
-      return NextResponse.json({ ok: false, error: "Image exceeds 8MB limit" }, { status: 400 });
+    const sizeLimit = isVideo ? MAX_VIDEO_SIZE : MAX_IMAGE_SIZE;
+    const label = isVideo ? "Video" : "Image";
+
+    if (!Number.isFinite(size) || size <= 0 || size > sizeLimit) {
+      return NextResponse.json(
+        { ok: false, error: `${label} exceeds ${Math.round(sizeLimit / (1024 * 1024))}MB limit` },
+        { status: 400 },
+      );
     }
 
     const data = await createSignedUploadUrl({

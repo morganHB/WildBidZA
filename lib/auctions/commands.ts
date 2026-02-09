@@ -6,7 +6,7 @@ import type { SettingsUpdateInput } from "@/lib/validation/settings";
 export async function createAuction(sellerId: string, payload: CreateAuctionInput) {
   const supabase = await createSupabaseServerClient();
 
-  const { images, min_increment, ...auctionPayload } = payload;
+  const { images, videos, min_increment, ...auctionPayload } = payload;
 
   const { data: settings } = await supabase.from("settings").select("default_min_increment").eq("id", 1).single();
 
@@ -35,13 +35,24 @@ export async function createAuction(sellerId: string, payload: CreateAuctionInpu
     }
   }
 
+  if (videos.length > 0) {
+    const { error: videoError } = await supabase.rpc("upsert_auction_videos", {
+      p_auction_id: auction.id,
+      p_videos: videos,
+    });
+
+    if (videoError) {
+      throw new Error(videoError.message);
+    }
+  }
+
   return auction.id;
 }
 
 export async function updateAuction(sellerId: string, auctionId: string, payload: UpdateAuctionInput) {
   const supabase = await createSupabaseServerClient();
 
-  const { images, ...auctionPayload } = payload;
+  const { images, videos, ...auctionPayload } = payload;
 
   const { error } = await supabase
     .from("auctions")
@@ -61,6 +72,17 @@ export async function updateAuction(sellerId: string, auctionId: string, payload
 
     if (imageError) {
       throw new Error(imageError.message);
+    }
+  }
+
+  if (videos) {
+    const { error: videoError } = await supabase.rpc("upsert_auction_videos", {
+      p_auction_id: auctionId,
+      p_videos: videos,
+    });
+
+    if (videoError) {
+      throw new Error(videoError.message);
     }
   }
 }
@@ -124,15 +146,34 @@ export async function adminUpdateUserStatus(params: {
   userId: string;
   approval_status?: "pending" | "approved" | "rejected";
   seller_status?: "none" | "approved";
+  role_group?: "user" | "marketer";
   is_admin?: boolean;
 }) {
   const supabase = await createSupabaseServerClient();
+
+  const sellerStatusFromRole =
+    params.role_group === "marketer"
+      ? "approved"
+      : params.role_group === "user"
+        ? "none"
+        : undefined;
+
+  const roleGroupFromSellerStatus =
+    params.seller_status === "approved"
+      ? "marketer"
+      : params.seller_status === "none"
+        ? "user"
+        : undefined;
+
+  const sellerStatusToPersist = params.seller_status ?? sellerStatusFromRole;
+  const roleGroupToPersist = params.role_group ?? roleGroupFromSellerStatus;
 
   const { error } = await supabase
     .from("profiles")
     .update({
       ...(params.approval_status ? { approval_status: params.approval_status } : {}),
-      ...(params.seller_status ? { seller_status: params.seller_status } : {}),
+      ...(sellerStatusToPersist ? { seller_status: sellerStatusToPersist } : {}),
+      ...(roleGroupToPersist ? { role_group: roleGroupToPersist } : {}),
       ...(typeof params.is_admin === "boolean" ? { is_admin: params.is_admin } : {}),
       updated_at: new Date().toISOString(),
     })
@@ -149,7 +190,8 @@ export async function adminUpdateUserStatus(params: {
     target_id: params.userId,
     metadata: {
       approval_status: params.approval_status,
-      seller_status: params.seller_status,
+      seller_status: sellerStatusToPersist,
+      role_group: roleGroupToPersist,
       is_admin: params.is_admin,
     },
   });

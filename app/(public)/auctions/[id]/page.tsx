@@ -50,7 +50,7 @@ export default async function AuctionDetailPage({ params }: { params: Promise<{ 
 
       <div className="grid gap-6 lg:grid-cols-[1.1fr_420px]">
         <div className="space-y-6">
-          <AuctionGallery images={auction.images ?? []} />
+          <AuctionGallery images={auction.images ?? []} videos={auction.videos ?? []} />
           <div className="flex flex-wrap gap-2">
             <WatchToggle auctionId={auction.id} isFavorited={auction.is_favorited} />
           </div>

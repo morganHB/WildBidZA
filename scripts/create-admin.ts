@@ -55,6 +55,7 @@ async function run() {
       display_name: adminDisplayName,
       approval_status: "approved",
       seller_status: "approved",
+      role_group: "marketer",
       is_admin: true,
     })
     .eq("id", userId);

@@ -27,9 +27,9 @@ export default async function DashboardPage() {
             ) : null}
           </div>
           <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-800">
-            <p className="text-xs uppercase tracking-wide text-slate-500">Seller status</p>
-            <p className="mt-2 text-lg font-semibold capitalize">{profile.seller_status}</p>
-            <p className="mt-1 text-xs text-slate-500">Seller role is granted by admin approval.</p>
+            <p className="text-xs uppercase tracking-wide text-slate-500">Role group</p>
+            <p className="mt-2 text-lg font-semibold capitalize">{profile.role_group}</p>
+            <p className="mt-1 text-xs text-slate-500">User can buy only, marketer can buy and sell.</p>
           </div>
           <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-800">
             <p className="text-xs uppercase tracking-wide text-slate-500">Role</p>

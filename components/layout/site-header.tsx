@@ -1,15 +1,15 @@
 import Link from "next/link";
 import { LayoutDashboard, PawPrint } from "lucide-react";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { isAdmin, isApprovedSeller } from "@/lib/auth/roles";
 import { APP_NAME } from "@/lib/constants/app";
 import { Button } from "@/components/ui/button";
 import { ModeToggle } from "@/components/layout/mode-toggle";
 
-const navItems = [
+const baseNavItems = [
   { href: "/auctions/live", label: "Live Auctions" },
   { href: "/auctions", label: "Categories" },
   { href: "/how-it-works", label: "How it works" },
-  { href: "/seller/create", label: "Sell" },
 ];
 
 export async function SiteHeader() {
@@ -17,6 +17,13 @@ export async function SiteHeader() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
+  const { data: profile } = user
+    ? await supabase.from("profiles").select("*").eq("id", user.id).single()
+    : { data: null };
+  const canSell = isApprovedSeller(profile) || isAdmin(profile);
+  const navItems = canSell
+    ? [...baseNavItems, { href: "/seller/create", label: "Sell" }]
+    : baseNavItems;
 
   return (
     <header className="sticky top-0 z-40 border-b border-emerald-100/80 bg-white/80 backdrop-blur-xl dark:border-emerald-900/30 dark:bg-slate-950/80">

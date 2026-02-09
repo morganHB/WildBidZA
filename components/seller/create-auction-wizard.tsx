@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { DraftAuctionImage, ImageCropUploader } from "@/components/seller/image-crop-uploader";
+import { DraftAuctionVideo, VideoClipUploader } from "@/components/seller/video-clip-uploader";
 
 type Category = {
   id: string;
@@ -51,7 +52,7 @@ type FormValues = {
   end_time_local: string;
 };
 
-const stepTitles = ["Basics", "Animal Details", "Pricing", "Timing", "Images"];
+const stepTitles = ["Basics", "Animal Details", "Pricing", "Timing", "Media"];
 
 function toReadableErrorMessage(error: unknown) {
   if (error instanceof ZodError) {
@@ -85,6 +86,7 @@ export function CreateAuctionWizard({
 }: AuctionWizardProps) {
   const [step, setStep] = useState(0);
   const [images, setImages] = useState<DraftAuctionImage[]>([]);
+  const [videos, setVideos] = useState<DraftAuctionVideo[]>([]);
   const [publishing, setPublishing] = useState(false);
   const router = useRouter();
 
@@ -161,11 +163,66 @@ export function CreateAuctionWizard({
     return paths;
   };
 
+  const uploadVideos = async () => {
+    const supabase = createSupabaseBrowserClient();
+    const uploaded: {
+      storage_path: string;
+      sort_order: number;
+      trim_start_seconds: number;
+      trim_end_seconds: number | null;
+      muted: boolean;
+    }[] = [];
+
+    for (let index = 0; index < videos.length; index += 1) {
+      const video = videos[index];
+
+      const uploadUrlRes = await fetch("/api/seller/auctions/images/upload-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fileName: video.fileName || `auction-video-${index + 1}.mp4`,
+          contentType: video.contentType || "video/mp4",
+          size: video.blob.size,
+        }),
+      });
+
+      const uploadUrlPayload = await uploadUrlRes.json();
+
+      if (!uploadUrlRes.ok || !uploadUrlPayload.ok) {
+        throw new Error(uploadUrlPayload.error ?? "Failed to prepare video upload");
+      }
+
+      const { path, token } = uploadUrlPayload.data as { path: string; token: string };
+
+      const { error } = await supabase.storage
+        .from("auction-images")
+        .uploadToSignedUrl(path, token, video.blob, {
+          contentType: video.contentType || "video/mp4",
+          upsert: false,
+        });
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      uploaded.push({
+        storage_path: path,
+        sort_order: index,
+        trim_start_seconds: video.trim_start_seconds,
+        trim_end_seconds: video.trim_end_seconds,
+        muted: video.muted,
+      });
+    }
+
+    return uploaded;
+  };
+
   const publish = form.handleSubmit(async (values) => {
     setPublishing(true);
 
     try {
       const uploadedImages = await uploadImages();
+      const uploadedVideos = await uploadVideos();
 
       const payloadResult = createAuctionSchema.safeParse({
         title: values.title,
@@ -192,6 +249,7 @@ export function CreateAuctionWizard({
         start_time: new Date(values.start_time_local).toISOString(),
         end_time: new Date(values.end_time_local).toISOString(),
         images: uploadedImages,
+        videos: uploadedVideos,
       });
 
       if (!payloadResult.success) {
@@ -376,7 +434,12 @@ export function CreateAuctionWizard({
           </div>
         ) : null}
 
-        {step === 4 ? <ImageCropUploader value={images} onChange={setImages} maxImages={maxImagesPerAuction} /> : null}
+        {step === 4 ? (
+          <div className="space-y-6">
+            <ImageCropUploader value={images} onChange={setImages} maxImages={maxImagesPerAuction} />
+            <VideoClipUploader value={videos} onChange={setVideos} maxVideos={3} />
+          </div>
+        ) : null}
 
         <div className="flex items-center justify-between">
           <Button

@@ -8,6 +8,7 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { SOUTH_AFRICA_PROVINCES } from "@/lib/constants/provinces";
 import { updateAuctionSchema } from "@/lib/validation/auction";
 import { DraftAuctionImage, ImageCropUploader } from "@/components/seller/image-crop-uploader";
+import { DraftAuctionVideo, VideoClipUploader } from "@/components/seller/video-clip-uploader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -43,6 +44,14 @@ type EditableAuction = {
   reserve_price: number | null;
   start_time: string;
   end_time: string;
+  videos: {
+    id: string;
+    storage_path: string;
+    sort_order: number;
+    trim_start_seconds: number;
+    trim_end_seconds: number | null;
+    muted: boolean;
+  }[];
 };
 
 function toLocalDateTimeInput(iso: string) {
@@ -63,7 +72,9 @@ export function EditAuctionForm({
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [replaceImages, setReplaceImages] = useState(false);
+  const [replaceVideos, setReplaceVideos] = useState(false);
   const [images, setImages] = useState<DraftAuctionImage[]>([]);
+  const [videos, setVideos] = useState<DraftAuctionVideo[]>([]);
   const [form, setForm] = useState({
     title: auction.title,
     description: auction.description,
@@ -128,12 +139,68 @@ export function EditAuctionForm({
     return paths;
   };
 
+  const uploadVideos = async () => {
+    const supabase = createSupabaseBrowserClient();
+    const uploaded: {
+      storage_path: string;
+      sort_order: number;
+      trim_start_seconds: number;
+      trim_end_seconds: number | null;
+      muted: boolean;
+    }[] = [];
+
+    for (let index = 0; index < videos.length; index += 1) {
+      const video = videos[index];
+
+      const uploadUrlRes = await fetch("/api/seller/auctions/images/upload-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fileName: video.fileName || `auction-${auction.id}-video-${index + 1}.mp4`,
+          contentType: video.contentType || "video/mp4",
+          size: video.blob.size,
+          auctionId: auction.id,
+        }),
+      });
+
+      const uploadUrlPayload = await uploadUrlRes.json();
+
+      if (!uploadUrlRes.ok || !uploadUrlPayload.ok) {
+        throw new Error(uploadUrlPayload.error ?? "Failed to prepare video upload");
+      }
+
+      const { path, token } = uploadUrlPayload.data as { path: string; token: string };
+
+      const { error } = await supabase.storage.from("auction-images").uploadToSignedUrl(path, token, video.blob, {
+        contentType: video.contentType || "video/mp4",
+        upsert: false,
+      });
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      uploaded.push({
+        storage_path: path,
+        sort_order: index,
+        trim_start_seconds: video.trim_start_seconds,
+        trim_end_seconds: video.trim_end_seconds,
+        muted: video.muted,
+      });
+    }
+
+    return uploaded;
+  };
+
   const save = async () => {
     setSaving(true);
 
     try {
       if (replaceImages && images.length === 0) {
         throw new Error("Add at least one replacement image before saving");
+      }
+      if (replaceVideos && videos.length === 0) {
+        throw new Error("Add at least one replacement video before saving");
       }
 
       const animalCountValue = Number(form.animal_count);
@@ -171,6 +238,7 @@ export function EditAuctionForm({
         start_time: new Date(form.start_time_local).toISOString(),
         end_time: new Date(form.end_time_local).toISOString(),
         ...(replaceImages ? { images: await uploadImages() } : {}),
+        ...(replaceVideos ? { videos: await uploadVideos() } : {}),
       };
 
       const parsed = updateAuctionSchema.safeParse(payload);
@@ -196,7 +264,14 @@ export function EditAuctionForm({
           URL.revokeObjectURL(image.previewUrl);
         }
       });
+      videos.forEach((video) => {
+        if (video.previewUrl.startsWith("blob:")) {
+          URL.revokeObjectURL(video.previewUrl);
+        }
+      });
       setImages([]);
+      setVideos([]);
+      setReplaceVideos(false);
       router.refresh();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to update listing");
@@ -392,6 +467,13 @@ export function EditAuctionForm({
         {replaceImages ? (
           <ImageCropUploader value={images} onChange={setImages} maxImages={maxImagesPerAuction} />
         ) : null}
+
+        <label className="flex items-center gap-3 rounded-xl border border-slate-200 p-3 text-sm dark:border-slate-800">
+          <Switch checked={replaceVideos} onCheckedChange={setReplaceVideos} />
+          Replace listing videos (if off, current videos stay unchanged)
+        </label>
+
+        {replaceVideos ? <VideoClipUploader value={videos} onChange={setVideos} maxVideos={3} /> : null}
 
         <Button onClick={save} disabled={saving}>
           {saving ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : null}

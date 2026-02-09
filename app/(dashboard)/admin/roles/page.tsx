@@ -9,7 +9,7 @@ export default async function AdminRolesPage() {
 
   const { data } = await supabase
     .from("profiles")
-    .select("id,display_name,email,approval_status,seller_status,is_admin,created_at")
+    .select("id,display_name,email,approval_status,role_group,is_admin,created_at")
     .order("created_at", { ascending: false })
     .limit(300);
 
