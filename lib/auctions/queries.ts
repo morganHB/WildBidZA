@@ -1,0 +1,366 @@
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+import type { AuctionListFilter } from "@/types/app";
+import type { Database } from "@/types/db";
+
+export type AuctionRow = Database["public"]["Tables"]["auctions"]["Row"];
+
+type AuctionSummary = AuctionRow & {
+  category: { id: string; name: string } | null;
+  seller: { id: string; display_name: string | null } | null;
+  images: { storage_path: string; sort_order: number }[];
+  current_price: number;
+  is_favorited: boolean;
+};
+
+function deriveStatus(row: AuctionRow, nowIso: string) {
+  if (row.status === "ended") {
+    return "ended" as const;
+  }
+
+  const now = new Date(nowIso).getTime();
+  const start = new Date(row.start_time).getTime();
+  const end = new Date(row.end_time).getTime();
+
+  if (now < start) {
+    return "upcoming" as const;
+  }
+
+  if (now >= end) {
+    return "ended" as const;
+  }
+
+  return "live" as const;
+}
+
+export async function getSiteSettings() {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.from("settings").select("*").eq("id", 1).single();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data;
+}
+
+export async function getActiveCategories() {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("animal_categories")
+    .select("id,name,description,is_active")
+    .eq("is_active", true)
+    .order("name", { ascending: true });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data ?? [];
+}
+
+export async function getAuctions(filters: AuctionListFilter, userId?: string | null) {
+  const supabase = await createSupabaseServerClient();
+  const nowIso = new Date().toISOString();
+
+  let query = supabase
+    .from("auctions")
+    .select(
+      `
+      *,
+      category:animal_categories(id,name),
+      seller:profiles!auctions_seller_id_fkey(id,display_name),
+      images:auction_images(storage_path,sort_order)
+    `,
+    )
+    .eq("is_active", true)
+    .eq("is_moderated", false)
+    .order("created_at", { ascending: false });
+
+  if (filters.q) {
+    query = query.or(`title.ilike.%${filters.q}%,description.ilike.%${filters.q}%`);
+  }
+
+  if (filters.categoryId) {
+    query = query.eq("category_id", filters.categoryId);
+  }
+
+  if (filters.province) {
+    query = query.eq("province", filters.province);
+  }
+
+  if (typeof filters.minPrice === "number") {
+    query = query.gte("starting_bid", filters.minPrice);
+  }
+
+  if (typeof filters.maxPrice === "number") {
+    query = query.lte("starting_bid", filters.maxPrice);
+  }
+
+  if (filters.limit) {
+    query = query.limit(filters.limit);
+  }
+
+  if (filters.offset) {
+    query = query.range(filters.offset, filters.offset + (filters.limit ?? 24) - 1);
+  }
+
+  if (filters.sort === "ending_soon") {
+    query = query.order("end_time", { ascending: true });
+  }
+
+  if (filters.sort === "highest_price") {
+    query = query.order("starting_bid", { ascending: false });
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const rawAuctions = (data ?? []) as (AuctionRow & {
+    category: { id: string; name: string } | null;
+    seller: { id: string; display_name: string | null } | null;
+    images: { storage_path: string; sort_order: number }[];
+  })[];
+
+  const filteredByStatus =
+    filters.status && filters.status !== "all"
+      ? rawAuctions.filter((row) => deriveStatus(row, nowIso) === filters.status)
+      : rawAuctions;
+
+  const auctionIds = filteredByStatus.map((row) => row.id);
+
+  const highestByAuction = new Map<string, number>();
+
+  if (auctionIds.length > 0) {
+    const { data: bids, error: bidError } = await supabase
+      .from("bids")
+      .select("auction_id,amount")
+      .in("auction_id", auctionIds)
+      .order("amount", { ascending: false });
+
+    if (bidError) {
+      throw new Error(bidError.message);
+    }
+
+    for (const bid of bids ?? []) {
+      if (!highestByAuction.has(bid.auction_id)) {
+        highestByAuction.set(bid.auction_id, bid.amount);
+      }
+    }
+  }
+
+  let favorites = new Set<string>();
+
+  if (userId && auctionIds.length > 0) {
+    const { data: favoriteRows } = await supabase
+      .from("favorites")
+      .select("auction_id")
+      .eq("user_id", userId)
+      .in("auction_id", auctionIds);
+
+    favorites = new Set((favoriteRows ?? []).map((row) => row.auction_id));
+  }
+
+  return filteredByStatus.map((row) => ({
+    ...row,
+    status: deriveStatus(row, nowIso),
+    current_price: highestByAuction.get(row.id) ?? row.starting_bid,
+    is_favorited: favorites.has(row.id),
+    images: [...(row.images ?? [])].sort((a, b) => a.sort_order - b.sort_order),
+  })) satisfies AuctionSummary[];
+}
+
+export async function getAuctionById(auctionId: string, userId?: string | null) {
+  const supabase = await createSupabaseServerClient();
+
+  const { data: auction, error } = await supabase
+    .from("auctions")
+    .select(
+      `
+      *,
+      category:animal_categories(id,name,description),
+      seller:profiles!auctions_seller_id_fkey(id,display_name),
+      images:auction_images(id,storage_path,sort_order,created_at)
+    `,
+    )
+    .eq("id", auctionId)
+    .single();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const { data: bids, error: bidError } = await supabase
+    .from("bids")
+    .select(
+      `
+      id,
+      amount,
+      created_at,
+      bidder_id,
+      profile:profiles!bids_bidder_id_fkey(display_name)
+    `,
+    )
+    .eq("auction_id", auctionId)
+    .order("created_at", { ascending: false })
+    .limit(100);
+
+  if (bidError) {
+    throw new Error(bidError.message);
+  }
+
+  let isFavorited = false;
+  if (userId) {
+    const { data: favoriteRow } = await supabase
+      .from("favorites")
+      .select("auction_id")
+      .eq("auction_id", auctionId)
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    isFavorited = Boolean(favoriteRow);
+  }
+
+  const highestBid = (bids ?? []).reduce((acc, row) => Math.max(acc, row.amount), auction.starting_bid);
+
+  return {
+    ...auction,
+    status: deriveStatus(auction as AuctionRow, new Date().toISOString()),
+    current_price: highestBid,
+    bid_count: bids?.length ?? 0,
+    bids:
+      bids?.map((bid) => {
+        const profile = Array.isArray(bid.profile) ? bid.profile[0] : bid.profile;
+
+        return {
+          ...bid,
+          bidder_name: (profile as { display_name: string | null } | null)?.display_name ?? "Bidder",
+        };
+      }) ?? [],
+    is_favorited: isFavorited,
+    images: [
+      ...((auction.images as { id: string; storage_path: string; sort_order: number; created_at: string }[]) ?? []),
+    ].sort((a, b) => a.sort_order - b.sort_order),
+  };
+}
+
+export async function getMyBids(userId: string) {
+  const supabase = await createSupabaseServerClient();
+
+  const { data, error } = await supabase
+    .from("bids")
+    .select(
+      `
+      id,
+      amount,
+      created_at,
+      auction:auctions!bids_auction_id_fkey(
+        id,
+        title,
+        end_time,
+        start_time,
+        status,
+        winner_user_id,
+        starting_bid
+      )
+    `,
+    )
+    .eq("bidder_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(100);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data ?? [];
+}
+
+export async function getWatchlist(userId: string) {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("favorites")
+    .select(
+      `
+      created_at,
+      auction:auctions(
+        id,
+        title,
+        status,
+        start_time,
+        end_time,
+        starting_bid,
+        images:auction_images(storage_path,sort_order)
+      )
+    `,
+    )
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data ?? [];
+}
+
+export async function getSellerListings(sellerId: string) {
+  const supabase = await createSupabaseServerClient();
+
+  const { data, error } = await supabase
+    .from("auctions")
+    .select(
+      `
+      *,
+      category:animal_categories(name),
+      images:auction_images(storage_path,sort_order),
+      bids:bids!bids_auction_id_fkey(amount)
+    `,
+    )
+    .eq("seller_id", sellerId)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return (data ?? []).map((row) => {
+    const bids = (row.bids as { amount: number }[] | null) ?? [];
+    const current_price = bids.reduce((acc, bid) => Math.max(acc, bid.amount), row.starting_bid);
+
+    return {
+      ...row,
+      bids,
+      current_price,
+      images: [...((row.images as { storage_path: string; sort_order: number }[]) ?? [])].sort(
+        (a, b) => a.sort_order - b.sort_order,
+      ),
+    };
+  });
+}
+
+export async function getAdminOverview() {
+  const supabase = await createSupabaseServerClient();
+
+  const [{ count: pendingApprovals }, { count: liveAuctions }, { count: usersCount }] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("id", { count: "exact", head: true })
+      .eq("approval_status", "pending"),
+    supabase
+      .from("auctions")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "live")
+      .eq("is_active", true),
+    supabase.from("profiles").select("id", { count: "exact", head: true }),
+  ]);
+
+  return {
+    pendingApprovals: pendingApprovals ?? 0,
+    liveAuctions: liveAuctions ?? 0,
+    usersCount: usersCount ?? 0,
+  };
+}
+

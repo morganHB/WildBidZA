@@ -1,26 +1,96 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --radius: 1rem;
+  --background: 245 249 245;
+  --foreground: 12 32 24;
+  --card: 255 255 255;
+  --card-foreground: 12 32 24;
+  --muted: 236 244 238;
+  --muted-foreground: 83 104 93;
+  --border: 213 228 218;
+  --input: 213 228 218;
+  --ring: 5 150 105;
+  --brand-50: 236 253 245;
+  --brand-100: 209 250 229;
+  --brand-200: 167 243 208;
+  --brand-300: 110 231 183;
+  --brand-400: 52 211 153;
+  --brand-500: 16 185 129;
+  --brand-600: 5 150 105;
+  --brand-700: 4 120 87;
+  --brand-800: 6 95 70;
+  --brand-900: 6 78 59;
+}
+
+.dark {
+  --background: 4 14 10;
+  --foreground: 236 253 245;
+  --card: 9 24 17;
+  --card-foreground: 236 253 245;
+  --muted: 16 37 27;
+  --muted-foreground: 145 179 160;
+  --border: 26 57 41;
+  --input: 26 57 41;
+  --ring: 52 211 153;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-manrope);
+  --font-heading: var(--font-space-grotesk);
+  --color-background: rgb(var(--background));
+  --color-foreground: rgb(var(--foreground));
+  --color-card: rgb(var(--card));
+  --color-card-foreground: rgb(var(--card-foreground));
+  --color-muted: rgb(var(--muted));
+  --color-muted-foreground: rgb(var(--muted-foreground));
+  --color-border: rgb(var(--border));
+  --color-input: rgb(var(--input));
+  --color-ring: rgb(var(--ring));
+  --color-brand-50: rgb(var(--brand-50));
+  --color-brand-100: rgb(var(--brand-100));
+  --color-brand-200: rgb(var(--brand-200));
+  --color-brand-300: rgb(var(--brand-300));
+  --color-brand-400: rgb(var(--brand-400));
+  --color-brand-500: rgb(var(--brand-500));
+  --color-brand-600: rgb(var(--brand-600));
+  --color-brand-700: rgb(var(--brand-700));
+  --color-brand-800: rgb(var(--brand-800));
+  --color-brand-900: rgb(var(--brand-900));
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  border-color: rgb(var(--border));
+}
+
+html,
+body {
+  min-height: 100%;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: rgb(var(--background));
+  background-image:
+    radial-gradient(1200px 500px at 0% -15%, rgb(var(--brand-100) / 0.5), transparent 55%),
+    radial-gradient(900px 420px at 100% -20%, rgb(var(--brand-200) / 0.25), transparent 50%);
+  color: rgb(var(--foreground));
+  font-family: var(--font-manrope), "Segoe UI", sans-serif;
+}
+
+.dark body {
+  background-image:
+    radial-gradient(1200px 500px at 0% -15%, rgb(var(--brand-900) / 0.45), transparent 55%),
+    radial-gradient(900px 420px at 100% -20%, rgb(var(--brand-700) / 0.28), transparent 52%);
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-space-grotesk), var(--font-manrope), "Segoe UI", sans-serif;
+}
+
+::selection {
+  background: rgb(var(--brand-200));
+  color: rgb(var(--brand-900));
 }
