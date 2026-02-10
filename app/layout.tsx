@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Manrope, Space_Grotesk } from "next/font/google";
+import "leaflet/dist/leaflet.css";
 import "./globals.css";
 import { Providers } from "./providers";
 import { APP_DESCRIPTION, APP_NAME } from "@/lib/constants/app";

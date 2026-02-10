@@ -1,9 +1,9 @@
 import Link from "next/link";
-import Image from "next/image";
 import { ArrowRight, Gavel, ShieldCheck, Sparkles, Timer } from "lucide-react";
 import { SiteFooter } from "@/components/layout/site-footer";
 import { SiteHeader } from "@/components/layout/site-header";
 import { AuctionGrid } from "@/components/auctions/auction-grid";
+import { BiosecurityMap } from "@/components/home/biosecurity-map";
 import { Button } from "@/components/ui/button";
 import { APP_NAME } from "@/lib/constants/app";
 import { getAuctions } from "@/lib/auctions/queries";
@@ -36,28 +36,28 @@ export default async function HomePage() {
         <section className="relative overflow-hidden pb-12 pt-14 sm:pb-16 lg:pt-20">
           <div className="pointer-events-none absolute -left-20 top-0 h-64 w-64 rounded-full bg-brand-200/70 blur-3xl" />
           <div className="pointer-events-none absolute -right-10 top-20 h-72 w-72 rounded-full bg-emerald-200/40 blur-3xl" />
-          <div className="mx-auto grid w-full max-w-7xl gap-8 px-4 sm:px-6 lg:grid-cols-[1.08fr_0.92fr] lg:px-8">
+          <div className="mx-auto w-full max-w-7xl space-y-8 px-4 sm:px-6 lg:px-8">
             <div className="space-y-6">
               <p className="inline-flex items-center rounded-full border border-brand-200 bg-white/90 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.2em] text-brand-700 shadow-sm">
                 Welcome to {APP_NAME}
               </p>
               <h1 className="text-balance text-4xl font-semibold tracking-tight text-slate-900 sm:text-5xl lg:text-6xl dark:text-white">
-                A secure wildlife bidding platform for{" "}
+                A secure livestock bidding platform for{" "}
                 <span className="bg-gradient-to-r from-brand-500 via-emerald-500 to-teal-500 bg-clip-text text-transparent">
                   biosecurity action
                 </span>
               </h1>
-              <p className="max-w-2xl text-base leading-relaxed text-slate-600 dark:text-slate-300">
-                WildBidZA is a secure online wildlife bidding platform dedicated to protecting South Africa&apos;s
-                biodiversity while supporting responsible game management and biosecurity action.
+              <p className="max-w-3xl text-base leading-relaxed text-slate-600 dark:text-slate-300">
+                WildBidZA is a secure online livestock bidding platform supporting responsible livestock management,
+                stronger farm-to-farm traceability, and practical biosecurity action across South Africa.
               </p>
-              <p className="max-w-2xl text-base leading-relaxed text-slate-600 dark:text-slate-300">
+              <p className="max-w-3xl text-base leading-relaxed text-slate-600 dark:text-slate-300">
                 Our mission is simple but powerful: reduce the spread of foot-and-mouth disease and other biosecurity
-                risks by creating a controlled, transparent, and traceable way to trade wildlife.
+                risks by creating a controlled, transparent, and traceable way to trade livestock.
               </p>
-              <p className="max-w-2xl text-base leading-relaxed text-slate-600 dark:text-slate-300">
+              <p className="max-w-3xl text-base leading-relaxed text-slate-600 dark:text-slate-300">
                 By moving animal bidding online, WildBidZA minimizes unnecessary movement, limits high-risk contact
-                points, and promotes healthier ecosystems for the long term.
+                points, and supports healthier herds and sustainable outcomes for livestock farmers.
               </p>
               <div className="grid gap-3 sm:grid-cols-3">
                 {highlights.map((item) => {
@@ -85,41 +85,24 @@ export default async function HomePage() {
                 </Button>
               </div>
               <p className="text-sm text-slate-500">
-                Whether you are a game farmer, conservation partner, or registered buyer, {APP_NAME} connects you to
-                a smarter way of trading that protects animals, livelihoods, and South Africa&apos;s natural heritage.
+                Whether you are a livestock farmer, compliance partner, or registered buyer, {APP_NAME} connects you
+                to a smarter way of trading that protects animals, livelihoods, and South Africa&apos;s agricultural
+                heritage.
               </p>
             </div>
+
             <div className="rounded-[2rem] border border-brand-100 bg-white/90 p-4 shadow-2xl shadow-brand-200/40 backdrop-blur dark:border-brand-900/40 dark:bg-slate-900/80 dark:shadow-none">
-              <div className="mb-3 flex items-center justify-between">
+              <div className="mb-4 flex items-center justify-between">
                 <div>
                   <h2 className="text-xl font-semibold">Biosecurity map view</h2>
-                  <p className="text-sm text-slate-500">Awareness snapshot for disease-risk zones</p>
+                  <p className="text-sm text-slate-500">Zoomable livestock-risk monitor for disease-aware trading</p>
                 </div>
                 <span className="inline-flex animate-pulse items-center gap-1 rounded-full bg-red-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-red-700">
                   <Sparkles className="h-3 w-3" />
                   High alert
                 </span>
               </div>
-              <div className="relative overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800">
-                <Image
-                  src="/mapimage.png"
-                  alt="Foot-and-mouth disease map overview for South Africa"
-                  width={1536}
-                  height={1152}
-                  className="h-auto w-full object-cover"
-                  priority
-                />
-              </div>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                <div className="rounded-2xl border border-slate-200 bg-white/80 p-3 text-sm dark:border-slate-800 dark:bg-slate-950/70">
-                  <p className="font-semibold">Infected area markers</p>
-                  <p className="mt-1 text-xs text-slate-500">Used for awareness and safer, traceable trade decisions.</p>
-                </div>
-                <div className="rounded-2xl border border-slate-200 bg-white/80 p-3 text-sm dark:border-slate-800 dark:bg-slate-950/70">
-                  <p className="font-semibold">High-risk corridor markers</p>
-                  <p className="mt-1 text-xs text-slate-500">Helps reduce unnecessary movement and cross-contact risk.</p>
-                </div>
-              </div>
+              <BiosecurityMap />
             </div>
           </div>
         </section>

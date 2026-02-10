@@ -1,5 +1,5 @@
 export const APP_NAME = "WildBidZA";
-export const APP_DESCRIPTION = "Premium South African livestock and game animal auction marketplace.";
+export const APP_DESCRIPTION = "Premium South African livestock auction marketplace.";
 export const APP_CURRENCY = "ZAR";
 export const APP_LOCALE = "en-ZA";
 export const APP_TIMEZONE = "Africa/Johannesburg";
