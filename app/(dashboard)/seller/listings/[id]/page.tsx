@@ -56,6 +56,7 @@ export default async function SellerListingDetailPage({ params }: { params: Prom
               status: auction.status,
               packet_series_id: auction.packet_series_id,
               auto_start_next: auction.auto_start_next,
+              images: auction.images,
               videos: auction.videos,
             }}
             categories={categories as { id: string; name: string }[]}

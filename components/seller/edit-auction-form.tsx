@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
-import { LoaderCircle } from "lucide-react";
+import { LoaderCircle, X } from "lucide-react";
 import { toast } from "sonner";
 import {
   AUCTION_DURATION_PRESETS,
@@ -72,6 +72,11 @@ type EditableAuction = {
   status: "upcoming" | "live" | "ended";
   packet_series_id: string | null;
   auto_start_next: boolean;
+  images: {
+    id: string;
+    storage_path: string;
+    sort_order: number;
+  }[];
   videos: {
     id: string;
     storage_path: string;
@@ -107,9 +112,11 @@ export function EditAuctionForm({
 }) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
-  const [replaceImages, setReplaceImages] = useState(false);
   const [replaceVideos, setReplaceVideos] = useState(false);
-  const [images, setImages] = useState<DraftAuctionImage[]>([]);
+  const [existingImages, setExistingImages] = useState(
+    [...(auction.images ?? [])].sort((a, b) => a.sort_order - b.sort_order),
+  );
+  const [newImages, setNewImages] = useState<DraftAuctionImage[]>([]);
   const [videos, setVideos] = useState<DraftAuctionVideo[]>([]);
   const canEditTiming = auction.status !== "ended";
   const initialDurationMinutes =
@@ -175,12 +182,12 @@ export function EditAuctionForm({
     };
   }, [durationMinutes, form.scheduled_start_local, form.start_mode]);
 
-  const uploadImages = async () => {
+  const uploadImages = async (sortOffset: number) => {
     const supabase = createSupabaseBrowserClient();
     const paths: { storage_path: string; sort_order: number }[] = [];
 
-    for (let index = 0; index < images.length; index += 1) {
-      const image = images[index];
+    for (let index = 0; index < newImages.length; index += 1) {
+      const image = newImages[index];
 
       const uploadUrlRes = await fetch("/api/seller/auctions/images/upload-url", {
         method: "POST",
@@ -215,7 +222,7 @@ export function EditAuctionForm({
         throw new Error(error.message);
       }
 
-      paths.push({ storage_path: path, sort_order: index });
+      paths.push({ storage_path: path, sort_order: sortOffset + index });
     }
 
     return paths;
@@ -283,11 +290,20 @@ export function EditAuctionForm({
     setSaving(true);
 
     try {
-      if (replaceImages && images.length === 0) {
-        throw new Error("Add at least one replacement image before saving");
-      }
       if (replaceVideos && videos.length === 0) {
         throw new Error("Add at least one replacement video before saving");
+      }
+
+      const existingImageIds = new Set(auction.images.map((image) => image.id));
+      const hasRemovedImages = existingImages.some((image) => !existingImageIds.has(image.id))
+        ? true
+        : existingImages.length !== auction.images.length;
+      const hasImageChanges = hasRemovedImages || newImages.length > 0;
+      const finalImageCount = existingImages.length + newImages.length;
+      const finalVideoCount = replaceVideos ? videos.length : auction.videos.length;
+
+      if (finalImageCount + finalVideoCount <= 0) {
+        throw new Error("Add at least one image or video before saving");
       }
 
       const animalCountValue = Number(form.animal_count);
@@ -338,7 +354,17 @@ export function EditAuctionForm({
             }
           : {}),
         ...(auction.packet_series_id ? { auto_start_next: form.auto_start_next } : {}),
-        ...(replaceImages ? { images: await uploadImages() } : {}),
+        ...(hasImageChanges
+          ? {
+              images: [
+                ...existingImages.map((image, index) => ({
+                  storage_path: image.storage_path,
+                  sort_order: index,
+                })),
+                ...(await uploadImages(existingImages.length)),
+              ],
+            }
+          : {}),
         ...(replaceVideos ? { videos: await uploadVideos() } : {}),
       };
 
@@ -361,8 +387,7 @@ export function EditAuctionForm({
       }
 
       toast.success("Listing updated");
-      setReplaceImages(false);
-      images.forEach((image) => {
+      newImages.forEach((image) => {
         if (image.previewUrl.startsWith("blob:")) {
           URL.revokeObjectURL(image.previewUrl);
         }
@@ -372,7 +397,7 @@ export function EditAuctionForm({
           URL.revokeObjectURL(video.previewUrl);
         }
       });
-      setImages([]);
+      setNewImages([]);
       setVideos([]);
       setReplaceVideos(false);
       router.refresh();
@@ -770,18 +795,57 @@ export function EditAuctionForm({
           </label>
         ) : null}
 
-        <label className="flex items-center gap-3 rounded-xl border border-slate-200 p-3 text-sm dark:border-slate-800">
-          <Switch checked={replaceImages} onCheckedChange={setReplaceImages} />
-          Replace listing images (if off, current images stay unchanged)
-        </label>
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <Label>Listing images</Label>
+            <p className="text-xs text-slate-500">
+              {existingImages.length + newImages.length} / {maxImagesPerAuction}
+            </p>
+          </div>
 
-        {replaceImages ? (
+          {existingImages.length > 0 ? (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {existingImages.map((image) => {
+                const imageUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/auction-images/${image.storage_path}`;
+
+                return (
+                  <div
+                    key={image.id}
+                    className="group relative overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800"
+                  >
+                    <img
+                      src={imageUrl}
+                      alt="Listing image"
+                      className="aspect-square w-full object-cover"
+                    />
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setExistingImages((state) =>
+                          state.filter((item) => item.id !== image.id),
+                        )
+                      }
+                      className="absolute right-2 top-2 rounded-lg bg-black/70 p-1.5 text-white opacity-90 transition hover:bg-black/80"
+                      aria-label="Remove image"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-xs text-slate-500">
+              No existing images kept. Add at least one image or a video before saving.
+            </p>
+          )}
+
           <ImageCropUploader
-            value={images}
-            onChange={setImages}
-            maxImages={maxImagesPerAuction}
+            value={newImages}
+            onChange={setNewImages}
+            maxImages={Math.max(0, maxImagesPerAuction - existingImages.length)}
           />
-        ) : null}
+        </div>
 
         <label className="flex items-center gap-3 rounded-xl border border-slate-200 p-3 text-sm dark:border-slate-800">
           <Switch checked={replaceVideos} onCheckedChange={setReplaceVideos} />
