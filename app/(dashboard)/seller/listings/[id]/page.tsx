@@ -40,7 +40,6 @@ export default async function SellerListingDetailPage({ params }: { params: Prom
               breed_type: auction.breed_type,
               sex: auction.sex,
               age: auction.age,
-              weight: auction.weight,
               province: auction.province,
               city: auction.city,
               farm_name: auction.farm_name,

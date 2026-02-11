@@ -107,7 +107,6 @@ export function CreatePacketSeriesWizard({
     breed_type: "",
     sex: "none",
     age: "",
-    weight: "",
     province: "",
     city: "",
     farm_name: "",
@@ -269,7 +268,6 @@ export function CreatePacketSeriesWizard({
         breed_type: form.breed_type || null,
         sex: form.sex === "none" ? null : form.sex,
         age: form.age || null,
-        weight: form.weight || null,
         province: form.province || null,
         city: form.city || null,
         farm_name: form.farm_name || null,
@@ -421,15 +419,6 @@ export function CreatePacketSeriesWizard({
                 value={form.age}
                 onChange={(event) =>
                   setForm((state) => ({ ...state, age: event.target.value }))
-                }
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Weight</Label>
-              <Input
-                value={form.weight}
-                onChange={(event) =>
-                  setForm((state) => ({ ...state, weight: event.target.value }))
                 }
               />
             </div>

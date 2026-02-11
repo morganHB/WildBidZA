@@ -56,7 +56,6 @@ type EditableAuction = {
   breed_type: string | null;
   sex: string | null;
   age: string | null;
-  weight: string | null;
   province: string | null;
   city: string | null;
   farm_name: string | null;
@@ -140,7 +139,6 @@ export function EditAuctionForm({
     breed_type: auction.breed_type ?? "",
     sex: auction.sex === "male" || auction.sex === "female" ? auction.sex : "",
     age: auction.age ?? "",
-    weight: auction.weight ?? "",
     province: auction.province ?? "",
     city: auction.city ?? "",
     farm_name: auction.farm_name ?? "",
@@ -337,7 +335,6 @@ export function EditAuctionForm({
         breed_type: form.breed_type || null,
         sex: form.sex || null,
         age: form.age || null,
-        weight: form.weight || null,
         province: form.province || null,
         city: form.city || null,
         farm_name: form.farm_name || null,
@@ -522,15 +519,6 @@ export function EditAuctionForm({
               value={form.age}
               onChange={(event) =>
                 setForm((state) => ({ ...state, age: event.target.value }))
-              }
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Weight</Label>
-            <Input
-              value={form.weight}
-              onChange={(event) =>
-                setForm((state) => ({ ...state, weight: event.target.value }))
               }
             />
           </div>

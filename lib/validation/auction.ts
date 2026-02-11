@@ -93,6 +93,8 @@ export const updateAuctionSchema = auctionBaseSchema
   .partial()
   .extend({
     is_active: z.boolean().optional(),
+    images: z.array(auctionImageSchema).max(8).optional(),
+    videos: z.array(auctionVideoSchema).max(3).optional(),
   })
   .refine(
     (data) =>

@@ -62,7 +62,6 @@ type FormValues = {
   breed_type: string;
   sex: string;
   age: string;
-  weight: string;
   province: string;
   city: string;
   farm_name: string;
@@ -135,7 +134,6 @@ export function CreateAuctionWizard({
       breed_type: "",
       sex: "",
       age: "",
-      weight: "",
       province: "",
       city: "",
       farm_name: "",
@@ -336,7 +334,6 @@ export function CreateAuctionWizard({
         breed_type: values.breed_type || null,
         sex: values.sex || null,
         age: values.age || null,
-        weight: values.weight || null,
         province: values.province || null,
         city: values.city || null,
         farm_name: values.farm_name || null,
@@ -496,10 +493,6 @@ export function CreateAuctionWizard({
             <div className="space-y-2">
               <Label>Age</Label>
               <Input {...form.register("age")} />
-            </div>
-            <div className="space-y-2">
-              <Label>Weight</Label>
-              <Input {...form.register("weight")} />
             </div>
             <div className="space-y-2">
               <Label>Province</Label>
