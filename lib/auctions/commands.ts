@@ -1,14 +1,22 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import type { CreateAuctionInput, UpdateAuctionInput } from "@/lib/validation/auction";
+import type {
+  CreateAuctionInput,
+  CreatePacketSeriesInput,
+  UpdateAuctionInput,
+} from "@/lib/validation/auction";
 import type { SettingsUpdateInput } from "@/lib/validation/settings";
 
 export async function createAuction(sellerId: string, payload: CreateAuctionInput) {
   const supabase = await createSupabaseServerClient();
 
-  const { images, videos, min_increment, ...auctionPayload } = payload;
+  const { images, videos, min_increment, duration_minutes, start_time, ...auctionPayload } = payload;
 
   const { data: settings } = await supabase.from("settings").select("default_min_increment").eq("id", 1).single();
+  const safeDuration = Math.max(10, Math.min(10080, Number(duration_minutes)));
+  const computedStart = start_time ? new Date(start_time) : new Date();
+  const startIso = computedStart.toISOString();
+  const endIso = new Date(computedStart.getTime() + safeDuration * 60_000).toISOString();
 
   const { data: auction, error } = await supabase
     .from("auctions")
@@ -16,6 +24,9 @@ export async function createAuction(sellerId: string, payload: CreateAuctionInpu
       ...auctionPayload,
       seller_id: sellerId,
       min_increment: min_increment ?? settings?.default_min_increment ?? 100,
+      duration_minutes: safeDuration,
+      start_time: startIso,
+      end_time: endIso,
     })
     .select("id")
     .single();
@@ -52,11 +63,46 @@ export async function createAuction(sellerId: string, payload: CreateAuctionInpu
 export async function updateAuction(sellerId: string, auctionId: string, payload: UpdateAuctionInput) {
   const supabase = await createSupabaseServerClient();
 
-  const { images, videos, ...auctionPayload } = payload;
+  const { images, videos, start_time, duration_minutes, ...auctionPayload } = payload;
+
+  const { data: existing, error: existingError } = await supabase
+    .from("auctions")
+    .select("id,start_time,duration_minutes,status,seller_id")
+    .eq("id", auctionId)
+    .single();
+
+  if (existingError || !existing) {
+    throw new Error(existingError?.message ?? "Auction not found");
+  }
+
+  if (existing.seller_id !== sellerId) {
+    throw new Error("Not authorized to update this listing");
+  }
+
+  const updatePayload: Record<string, unknown> = {
+    ...auctionPayload,
+    updated_at: new Date().toISOString(),
+  };
+
+  const shouldRecomputeWindow = existing.status !== "ended" && (Boolean(start_time) || typeof duration_minutes === "number");
+
+  if (shouldRecomputeWindow) {
+    const nextStart = start_time ? new Date(start_time) : new Date(existing.start_time);
+    const nextDuration = Math.max(
+      10,
+      Math.min(10080, Number(duration_minutes ?? existing.duration_minutes ?? 60)),
+    );
+
+    updatePayload.start_time = nextStart.toISOString();
+    updatePayload.end_time = new Date(nextStart.getTime() + nextDuration * 60_000).toISOString();
+    updatePayload.duration_minutes = nextDuration;
+  } else if (typeof duration_minutes === "number") {
+    updatePayload.duration_minutes = Math.max(10, Math.min(10080, Number(duration_minutes)));
+  }
 
   const { error } = await supabase
     .from("auctions")
-    .update({ ...auctionPayload, updated_at: new Date().toISOString() })
+    .update(updatePayload)
     .eq("id", auctionId)
     .eq("seller_id", sellerId);
 
@@ -85,6 +131,74 @@ export async function updateAuction(sellerId: string, auctionId: string, payload
       throw new Error(videoError.message);
     }
   }
+}
+
+export async function createPacketSeries(payload: CreatePacketSeriesInput) {
+  const supabase = await createSupabaseServerClient();
+
+  const { data, error } = await supabase.rpc("create_packet_series", {
+    p_payload: payload,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data as { series_id: string; auction_ids: string[] };
+}
+
+export async function activateNextPacket(params: {
+  auctionId: string;
+  actorId: string;
+  isAdmin: boolean;
+}) {
+  const supabase = await createSupabaseServerClient();
+
+  const { data: auction, error: auctionError } = await supabase
+    .from("auctions")
+    .select("id,seller_id,status")
+    .eq("id", params.auctionId)
+    .single();
+
+  if (auctionError || !auction) {
+    throw new Error(auctionError?.message ?? "Auction not found");
+  }
+
+  if (!params.isAdmin && auction.seller_id !== params.actorId) {
+    throw new Error("Not authorized to activate the next packet");
+  }
+
+  if (auction.status !== "ended") {
+    throw new Error("Current packet must be ended before starting the next packet");
+  }
+
+  const { data: nextPacket, error: nextPacketError } = await supabase
+    .from("auctions")
+    .select("id")
+    .eq("previous_packet_auction_id", params.auctionId)
+    .eq("is_waiting_for_previous", true)
+    .eq("is_active", true)
+    .order("packet_sequence", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (nextPacketError) {
+    throw new Error(nextPacketError.message);
+  }
+
+  if (!nextPacket) {
+    throw new Error("No waiting next packet found");
+  }
+
+  const { data, error } = await supabase.rpc("activate_packet", {
+    p_auction_id: nextPacket.id,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data;
 }
 
 export async function placeBid(auctionId: string, amount: number) {

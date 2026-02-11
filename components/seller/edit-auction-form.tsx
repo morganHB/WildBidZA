@@ -1,19 +1,43 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { LoaderCircle } from "lucide-react";
 import { toast } from "sonner";
+import {
+  AUCTION_DURATION_PRESETS,
+  getPresetFromMinutes,
+  type AuctionDurationPreset,
+  resolveDurationMinutes,
+} from "@/lib/constants/auction-duration";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { SOUTH_AFRICA_PROVINCES } from "@/lib/constants/provinces";
 import { updateAuctionSchema } from "@/lib/validation/auction";
-import { DraftAuctionImage, ImageCropUploader } from "@/components/seller/image-crop-uploader";
-import { DraftAuctionVideo, VideoClipUploader } from "@/components/seller/video-clip-uploader";
+import {
+  DraftAuctionImage,
+  ImageCropUploader,
+} from "@/components/seller/image-crop-uploader";
+import {
+  DraftAuctionVideo,
+  VideoClipUploader,
+} from "@/components/seller/video-clip-uploader";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -44,6 +68,10 @@ type EditableAuction = {
   reserve_price: number | null;
   start_time: string;
   end_time: string;
+  duration_minutes: number;
+  status: "upcoming" | "live" | "ended";
+  packet_series_id: string | null;
+  auto_start_next: boolean;
   videos: {
     id: string;
     storage_path: string;
@@ -58,6 +86,14 @@ function toLocalDateTimeInput(iso: string) {
   const date = new Date(iso);
   const offsetMs = date.getTimezoneOffset() * 60_000;
   return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
+}
+
+function formatJohannesburgDate(iso: string) {
+  return new Intl.DateTimeFormat("en-ZA", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "Africa/Johannesburg",
+  }).format(new Date(iso));
 }
 
 export function EditAuctionForm({
@@ -75,6 +111,19 @@ export function EditAuctionForm({
   const [replaceVideos, setReplaceVideos] = useState(false);
   const [images, setImages] = useState<DraftAuctionImage[]>([]);
   const [videos, setVideos] = useState<DraftAuctionVideo[]>([]);
+  const canEditTiming = auction.status !== "ended";
+  const initialDurationMinutes =
+    auction.duration_minutes ??
+    Math.max(
+      10,
+      Math.round(
+        (new Date(auction.end_time).getTime() -
+          new Date(auction.start_time).getTime()) /
+          60_000,
+      ),
+    );
+  const initialPreset = getPresetFromMinutes(initialDurationMinutes);
+
   const [form, setForm] = useState({
     title: auction.title,
     description: auction.description,
@@ -94,9 +143,37 @@ export function EditAuctionForm({
     starting_bid: String(auction.starting_bid),
     min_increment: String(auction.min_increment),
     reserve_price: auction.reserve_price ? String(auction.reserve_price) : "",
-    start_time_local: toLocalDateTimeInput(auction.start_time),
-    end_time_local: toLocalDateTimeInput(auction.end_time),
+    start_mode: "scheduled" as "immediate" | "scheduled",
+    scheduled_start_local: toLocalDateTimeInput(auction.start_time),
+    duration_preset: initialPreset,
+    custom_duration_value:
+      initialPreset === "custom" ? String(initialDurationMinutes) : "60",
+    custom_duration_unit: "minutes" as "minutes" | "hours",
+    auto_start_next: auction.auto_start_next,
   });
+
+  const durationMinutes = resolveDurationMinutes({
+    preset: form.duration_preset as AuctionDurationPreset,
+    customValue: Number(form.custom_duration_value),
+    customUnit: form.custom_duration_unit,
+  });
+
+  const timingPreview = useMemo(() => {
+    const start =
+      form.start_mode === "scheduled" && form.scheduled_start_local
+        ? new Date(form.scheduled_start_local)
+        : new Date();
+
+    if (Number.isNaN(start.getTime())) {
+      return null;
+    }
+
+    const end = new Date(start.getTime() + durationMinutes * 60_000);
+    return {
+      startIso: start.toISOString(),
+      endIso: end.toISOString(),
+    };
+  }, [durationMinutes, form.scheduled_start_local, form.start_mode]);
 
   const uploadImages = async () => {
     const supabase = createSupabaseBrowserClient();
@@ -122,12 +199,17 @@ export function EditAuctionForm({
         throw new Error(uploadUrlPayload.error ?? "Failed to prepare image upload");
       }
 
-      const { path, token } = uploadUrlPayload.data as { path: string; token: string };
+      const { path, token } = uploadUrlPayload.data as {
+        path: string;
+        token: string;
+      };
 
-      const { error } = await supabase.storage.from("auction-images").uploadToSignedUrl(path, token, image.blob, {
-        contentType: "image/jpeg",
-        upsert: false,
-      });
+      const { error } = await supabase.storage
+        .from("auction-images")
+        .uploadToSignedUrl(path, token, image.blob, {
+          contentType: "image/jpeg",
+          upsert: false,
+        });
 
       if (error) {
         throw new Error(error.message);
@@ -169,12 +251,17 @@ export function EditAuctionForm({
         throw new Error(uploadUrlPayload.error ?? "Failed to prepare video upload");
       }
 
-      const { path, token } = uploadUrlPayload.data as { path: string; token: string };
+      const { path, token } = uploadUrlPayload.data as {
+        path: string;
+        token: string;
+      };
 
-      const { error } = await supabase.storage.from("auction-images").uploadToSignedUrl(path, token, video.blob, {
-        contentType: video.contentType || "video/mp4",
-        upsert: false,
-      });
+      const { error } = await supabase.storage
+        .from("auction-images")
+        .uploadToSignedUrl(path, token, video.blob, {
+          contentType: video.contentType || "video/mp4",
+          upsert: false,
+        });
 
       if (error) {
         throw new Error(error.message);
@@ -216,6 +303,15 @@ export function EditAuctionForm({
         throw new Error("Average weight is required for herd listings");
       }
 
+      const startTime =
+        form.start_mode === "scheduled"
+          ? new Date(form.scheduled_start_local)
+          : new Date();
+
+      if (canEditTiming && Number.isNaN(startTime.getTime())) {
+        throw new Error("Provide a valid start time");
+      }
+
       const payload = {
         title: form.title,
         description: form.description,
@@ -235,15 +331,22 @@ export function EditAuctionForm({
         starting_bid: Number(form.starting_bid),
         min_increment: Number(form.min_increment),
         reserve_price: form.reserve_price ? Number(form.reserve_price) : null,
-        start_time: new Date(form.start_time_local).toISOString(),
-        end_time: new Date(form.end_time_local).toISOString(),
+        ...(canEditTiming
+          ? {
+              start_time: startTime.toISOString(),
+              duration_minutes: durationMinutes,
+            }
+          : {}),
+        ...(auction.packet_series_id ? { auto_start_next: form.auto_start_next } : {}),
         ...(replaceImages ? { images: await uploadImages() } : {}),
         ...(replaceVideos ? { videos: await uploadVideos() } : {}),
       };
 
       const parsed = updateAuctionSchema.safeParse(payload);
       if (!parsed.success) {
-        throw new Error(parsed.error.issues[0]?.message ?? "Invalid auction update payload");
+        throw new Error(
+          parsed.error.issues[0]?.message ?? "Invalid auction update payload",
+        );
       }
 
       const response = await fetch(`/api/seller/auctions/${auction.id}`, {
@@ -274,7 +377,9 @@ export function EditAuctionForm({
       setReplaceVideos(false);
       router.refresh();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to update listing");
+      toast.error(
+        error instanceof Error ? error.message : "Failed to update listing",
+      );
     } finally {
       setSaving(false);
     }
@@ -284,25 +389,39 @@ export function EditAuctionForm({
     <Card>
       <CardHeader>
         <CardTitle>Edit listing</CardTitle>
-        <CardDescription>Update your auction details and save changes any time before closing.</CardDescription>
+        <CardDescription>
+          Update your auction details and save changes any time before closing.
+        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2 sm:col-span-2">
             <Label>Title</Label>
-            <Input value={form.title} onChange={(event) => setForm((state) => ({ ...state, title: event.target.value }))} />
+            <Input
+              value={form.title}
+              onChange={(event) =>
+                setForm((state) => ({ ...state, title: event.target.value }))
+              }
+            />
           </div>
           <div className="space-y-2 sm:col-span-2">
             <Label>Description</Label>
             <Textarea
               rows={6}
               value={form.description}
-              onChange={(event) => setForm((state) => ({ ...state, description: event.target.value }))}
+              onChange={(event) =>
+                setForm((state) => ({ ...state, description: event.target.value }))
+              }
             />
           </div>
           <div className="space-y-2">
             <Label>Category</Label>
-            <Select value={form.category_id} onValueChange={(value) => setForm((state) => ({ ...state, category_id: value }))}>
+            <Select
+              value={form.category_id}
+              onValueChange={(value) =>
+                setForm((state) => ({ ...state, category_id: value }))
+              }
+            >
               <SelectTrigger>
                 <SelectValue placeholder="Select category" />
               </SelectTrigger>
@@ -322,7 +441,9 @@ export function EditAuctionForm({
               min={1}
               step="1"
               value={form.animal_count}
-              onChange={(event) => setForm((state) => ({ ...state, animal_count: event.target.value }))}
+              onChange={(event) =>
+                setForm((state) => ({ ...state, animal_count: event.target.value }))
+              }
             />
           </div>
           <div className="space-y-2">
@@ -332,19 +453,33 @@ export function EditAuctionForm({
               min={1}
               step="0.1"
               value={form.avg_weight_kg}
-              onChange={(event) => setForm((state) => ({ ...state, avg_weight_kg: event.target.value }))}
+              onChange={(event) =>
+                setForm((state) => ({ ...state, avg_weight_kg: event.target.value }))
+              }
             />
-            <p className="text-xs text-slate-500">Required when number of animals is more than 1.</p>
+            <p className="text-xs text-slate-500">
+              Required when number of animals is more than 1.
+            </p>
           </div>
           <div className="space-y-2">
             <Label>Breed / Type</Label>
-            <Input value={form.breed_type} onChange={(event) => setForm((state) => ({ ...state, breed_type: event.target.value }))} />
+            <Input
+              value={form.breed_type}
+              onChange={(event) =>
+                setForm((state) => ({ ...state, breed_type: event.target.value }))
+              }
+            />
           </div>
           <div className="space-y-2">
             <Label>Sex</Label>
             <Select
               value={form.sex || "none"}
-              onValueChange={(value) => setForm((state) => ({ ...state, sex: value === "none" ? "" : value }))}
+              onValueChange={(value) =>
+                setForm((state) => ({
+                  ...state,
+                  sex: value === "none" ? "" : value,
+                }))
+              }
             >
               <SelectTrigger>
                 <SelectValue placeholder="Select sex" />
@@ -358,15 +493,33 @@ export function EditAuctionForm({
           </div>
           <div className="space-y-2">
             <Label>Age</Label>
-            <Input value={form.age} onChange={(event) => setForm((state) => ({ ...state, age: event.target.value }))} />
+            <Input
+              value={form.age}
+              onChange={(event) =>
+                setForm((state) => ({ ...state, age: event.target.value }))
+              }
+            />
           </div>
           <div className="space-y-2">
             <Label>Weight</Label>
-            <Input value={form.weight} onChange={(event) => setForm((state) => ({ ...state, weight: event.target.value }))} />
+            <Input
+              value={form.weight}
+              onChange={(event) =>
+                setForm((state) => ({ ...state, weight: event.target.value }))
+              }
+            />
           </div>
           <div className="space-y-2">
             <Label>Province</Label>
-            <Select value={form.province || "none"} onValueChange={(value) => setForm((state) => ({ ...state, province: value === "none" ? "" : value }))}>
+            <Select
+              value={form.province || "none"}
+              onValueChange={(value) =>
+                setForm((state) => ({
+                  ...state,
+                  province: value === "none" ? "" : value,
+                }))
+              }
+            >
               <SelectTrigger>
                 <SelectValue placeholder="Select province" />
               </SelectTrigger>
@@ -382,25 +535,42 @@ export function EditAuctionForm({
           </div>
           <div className="space-y-2">
             <Label>City</Label>
-            <Input value={form.city} onChange={(event) => setForm((state) => ({ ...state, city: event.target.value }))} />
+            <Input
+              value={form.city}
+              onChange={(event) =>
+                setForm((state) => ({ ...state, city: event.target.value }))
+              }
+            />
           </div>
           <div className="space-y-2 sm:col-span-2">
             <Label>Farm / Reserve name</Label>
-            <Input value={form.farm_name} onChange={(event) => setForm((state) => ({ ...state, farm_name: event.target.value }))} />
+            <Input
+              value={form.farm_name}
+              onChange={(event) =>
+                setForm((state) => ({ ...state, farm_name: event.target.value }))
+              }
+            />
           </div>
           <div className="space-y-2 sm:col-span-2">
             <Label>Health / Vet notes</Label>
             <Textarea
               rows={4}
               value={form.health_notes}
-              onChange={(event) => setForm((state) => ({ ...state, health_notes: event.target.value }))}
+              onChange={(event) =>
+                setForm((state) => ({ ...state, health_notes: event.target.value }))
+              }
             />
           </div>
           <div className="space-y-2 sm:col-span-2">
             <Label>Permit / reference number</Label>
             <Input
               value={form.permit_reference}
-              onChange={(event) => setForm((state) => ({ ...state, permit_reference: event.target.value }))}
+              onChange={(event) =>
+                setForm((state) => ({
+                  ...state,
+                  permit_reference: event.target.value,
+                }))
+              }
             />
           </div>
           <div className="space-y-2">
@@ -410,7 +580,12 @@ export function EditAuctionForm({
               min={1}
               step="1"
               value={form.starting_bid}
-              onChange={(event) => setForm((state) => ({ ...state, starting_bid: event.target.value }))}
+              onChange={(event) =>
+                setForm((state) => ({
+                  ...state,
+                  starting_bid: event.target.value,
+                }))
+              }
             />
           </div>
           <div className="space-y-2">
@@ -420,7 +595,12 @@ export function EditAuctionForm({
               min={1}
               step="1"
               value={form.min_increment}
-              onChange={(event) => setForm((state) => ({ ...state, min_increment: event.target.value }))}
+              onChange={(event) =>
+                setForm((state) => ({
+                  ...state,
+                  min_increment: event.target.value,
+                }))
+              }
             />
           </div>
           <div className="space-y-2">
@@ -430,7 +610,12 @@ export function EditAuctionForm({
               min={1}
               step="1"
               value={form.reserve_price}
-              onChange={(event) => setForm((state) => ({ ...state, reserve_price: event.target.value }))}
+              onChange={(event) =>
+                setForm((state) => ({
+                  ...state,
+                  reserve_price: event.target.value,
+                }))
+              }
             />
           </div>
           <div className="space-y-2 sm:col-span-2">
@@ -438,26 +623,152 @@ export function EditAuctionForm({
             <Textarea
               rows={4}
               value={form.collection_notes}
-              onChange={(event) => setForm((state) => ({ ...state, collection_notes: event.target.value }))}
+              onChange={(event) =>
+                setForm((state) => ({
+                  ...state,
+                  collection_notes: event.target.value,
+                }))
+              }
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Auction start</Label>
+            <Select
+              value={form.start_mode}
+              onValueChange={(value: "immediate" | "scheduled") =>
+                setForm((state) => ({ ...state, start_mode: value }))
+              }
+              disabled={!canEditTiming}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="immediate">Start now</SelectItem>
+                <SelectItem value="scheduled">Schedule start</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Scheduled start (Johannesburg)</Label>
+            <Input
+              type="datetime-local"
+              value={form.scheduled_start_local}
+              onChange={(event) =>
+                setForm((state) => ({
+                  ...state,
+                  scheduled_start_local: event.target.value,
+                }))
+              }
+              disabled={!canEditTiming || form.start_mode === "immediate"}
             />
           </div>
           <div className="space-y-2">
-            <Label>Start time (Johannesburg)</Label>
-            <Input
-              type="datetime-local"
-              value={form.start_time_local}
-              onChange={(event) => setForm((state) => ({ ...state, start_time_local: event.target.value }))}
-            />
+            <Label>Duration</Label>
+            <Select
+              value={form.duration_preset}
+              onValueChange={(value: AuctionDurationPreset) =>
+                setForm((state) => ({ ...state, duration_preset: value }))
+              }
+              disabled={!canEditTiming}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {AUCTION_DURATION_PRESETS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
-          <div className="space-y-2">
-            <Label>End time (Johannesburg)</Label>
-            <Input
-              type="datetime-local"
-              value={form.end_time_local}
-              onChange={(event) => setForm((state) => ({ ...state, end_time_local: event.target.value }))}
-            />
+          {form.duration_preset === "custom" ? (
+            <div className="space-y-2">
+              <Label>Custom duration</Label>
+              <div className="grid grid-cols-[1fr_auto] gap-2">
+                <Input
+                  type="number"
+                  min={1}
+                  step="1"
+                  value={form.custom_duration_value}
+                  onChange={(event) =>
+                    setForm((state) => ({
+                      ...state,
+                      custom_duration_value: event.target.value,
+                    }))
+                  }
+                  disabled={!canEditTiming}
+                />
+                <Select
+                  value={form.custom_duration_unit}
+                  onValueChange={(value: "minutes" | "hours") =>
+                    setForm((state) => ({
+                      ...state,
+                      custom_duration_unit: value,
+                    }))
+                  }
+                  disabled={!canEditTiming}
+                >
+                  <SelectTrigger className="w-[120px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="minutes">Minutes</SelectItem>
+                    <SelectItem value="hours">Hours</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          ) : null}
+          <div className="space-y-1 rounded-2xl border border-brand-100 bg-brand-50/60 p-4 sm:col-span-2 dark:border-brand-900/40 dark:bg-brand-950/30">
+            <p className="text-xs uppercase tracking-wide text-brand-700 dark:text-brand-300">
+              Timing preview
+            </p>
+            <p className="text-sm text-slate-700 dark:text-slate-200">
+              Duration: <span className="font-semibold">{durationMinutes} minutes</span>
+            </p>
+            {timingPreview ? (
+              <>
+                <p className="text-sm text-slate-700 dark:text-slate-200">
+                  Estimated start:{" "}
+                  <span className="font-semibold">
+                    {formatJohannesburgDate(timingPreview.startIso)}
+                  </span>
+                </p>
+                <p className="text-sm text-slate-700 dark:text-slate-200">
+                  Estimated end:{" "}
+                  <span className="font-semibold">
+                    {formatJohannesburgDate(timingPreview.endIso)}
+                  </span>
+                </p>
+              </>
+            ) : (
+              <p className="text-sm text-red-600">
+                Enter a valid schedule to preview timings.
+              </p>
+            )}
+            {!canEditTiming ? (
+              <p className="text-xs text-slate-500">
+                Timing cannot be changed after auction end.
+              </p>
+            ) : null}
           </div>
         </div>
+
+        {auction.packet_series_id ? (
+          <label className="flex items-center gap-3 rounded-xl border border-slate-200 p-3 text-sm dark:border-slate-800">
+            <Switch
+              checked={form.auto_start_next}
+              onCheckedChange={(checked) =>
+                setForm((state) => ({ ...state, auto_start_next: checked }))
+              }
+            />
+            Auto-start next packet when this packet ends
+          </label>
+        ) : null}
 
         <label className="flex items-center gap-3 rounded-xl border border-slate-200 p-3 text-sm dark:border-slate-800">
           <Switch checked={replaceImages} onCheckedChange={setReplaceImages} />
@@ -465,7 +776,11 @@ export function EditAuctionForm({
         </label>
 
         {replaceImages ? (
-          <ImageCropUploader value={images} onChange={setImages} maxImages={maxImagesPerAuction} />
+          <ImageCropUploader
+            value={images}
+            onChange={setImages}
+            maxImages={maxImagesPerAuction}
+          />
         ) : null}
 
         <label className="flex items-center gap-3 rounded-xl border border-slate-200 p-3 text-sm dark:border-slate-800">
@@ -473,7 +788,9 @@ export function EditAuctionForm({
           Replace listing videos (if off, current videos stay unchanged)
         </label>
 
-        {replaceVideos ? <VideoClipUploader value={videos} onChange={setVideos} maxVideos={3} /> : null}
+        {replaceVideos ? (
+          <VideoClipUploader value={videos} onChange={setVideos} maxVideos={3} />
+        ) : null}
 
         <Button onClick={save} disabled={saving}>
           {saving ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : null}

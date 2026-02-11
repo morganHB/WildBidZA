@@ -24,6 +24,10 @@ function deriveStatus(row: AuctionRow, nowIso: string) {
     return "ended" as const;
   }
 
+  if (row.is_waiting_for_previous) {
+    return "upcoming" as const;
+  }
+
   const now = new Date(nowIso).getTime();
   const start = new Date(row.start_time).getTime();
   const end = new Date(row.end_time).getTime();
@@ -337,6 +341,7 @@ export async function getWatchlist(userId: string) {
 
 export async function getSellerListings(sellerId: string) {
   const supabase = await createSupabaseServerClient();
+  const nowIso = new Date().toISOString();
 
   const { data, error } = await supabase
     .from("auctions")
@@ -362,6 +367,7 @@ export async function getSellerListings(sellerId: string) {
 
     return {
       ...row,
+      status: deriveStatus(row as AuctionRow, nowIso),
       bids,
       current_price,
       images: [...((row.images as { storage_path: string; sort_order: number }[]) ?? [])].sort(

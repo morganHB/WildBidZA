@@ -18,6 +18,9 @@ export type AuctionCardData = {
   start_time: string;
   end_time: string;
   current_price: number;
+  bid_pricing_mode?: "lot_total" | "per_head";
+  animal_count?: number;
+  is_waiting_for_previous?: boolean;
   province?: string | null;
   city?: string | null;
   category?: { name?: string | null } | null;
@@ -49,11 +52,17 @@ export function AuctionCard({ auction }: { auction: AuctionCardData }) {
   }, [imageUrl]);
 
   const timingLabel =
-    auction.status === "upcoming"
+    auction.is_waiting_for_previous
+      ? "Starts after previous packet closes"
+      : auction.status === "upcoming"
       ? `Starts ${relativeFromNow(auction.start_time)}`
       : auction.status === "ended"
         ? `Ended ${formatAuctionDate(auction.end_time)}`
         : `Ends ${relativeFromNow(auction.end_time)}`;
+  const isPerHead = auction.bid_pricing_mode === "per_head";
+  const packetTotal = isPerHead
+    ? auction.current_price * Math.max(1, auction.animal_count ?? 1)
+    : auction.current_price;
 
   return (
     <Card className="group overflow-hidden rounded-3xl border-slate-200/90 bg-white/95 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-brand-100/60 dark:border-slate-800 dark:bg-slate-950/80 dark:hover:shadow-none">
@@ -124,10 +133,17 @@ export function AuctionCard({ auction }: { auction: AuctionCardData }) {
         <div className="rounded-2xl bg-slate-100 p-4 dark:bg-slate-900">
           <div className="flex items-end justify-between gap-4">
             <div>
-              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Current bid</p>
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                {isPerHead ? "Current bid / head" : "Current bid"}
+              </p>
               <p className="mt-1 text-3xl font-semibold tracking-tight text-slate-950 dark:text-slate-50">
                 {formatZar(auction.current_price)}
               </p>
+              {isPerHead ? (
+                <p className="mt-1 text-xs text-slate-500">
+                  Total for packet: {formatZar(packetTotal)} ({auction.animal_count ?? 1} head)
+                </p>
+              ) : null}
             </div>
             <p className="text-xs text-slate-500">{auction.status === "ended" ? "Closed" : "Live updates"}</p>
           </div>

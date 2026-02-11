@@ -2,6 +2,7 @@ export type ApprovalStatus = "pending" | "approved" | "rejected";
 export type SellerStatus = "none" | "approved";
 export type RoleGroup = "user" | "marketer";
 export type AuctionStatus = "upcoming" | "live" | "ended";
+export type BidPricingMode = "lot_total" | "per_head";
 
 export type NotificationType =
   | "outbid"
@@ -53,8 +54,14 @@ export type CreateAuctionPayload = {
   starting_bid: number;
   min_increment?: number | null;
   reserve_price?: number | null;
+  bid_pricing_mode?: BidPricingMode;
+  duration_minutes: number;
+  packet_series_id?: string | null;
+  packet_sequence?: number | null;
+  previous_packet_auction_id?: string | null;
+  is_waiting_for_previous?: boolean;
+  auto_start_next?: boolean;
   start_time: string;
-  end_time: string;
   images: AuctionImageInput[];
   videos: AuctionVideoInput[];
 };

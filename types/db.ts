@@ -1,6 +1,7 @@
 import type {
   ApprovalStatus,
   AuctionStatus,
+  BidPricingMode,
   NotificationType,
   RoleGroup,
   SellerStatus,
@@ -99,6 +100,13 @@ export type Database = {
           starting_bid: number;
           min_increment: number;
           reserve_price: number | null;
+          bid_pricing_mode: BidPricingMode;
+          duration_minutes: number;
+          packet_series_id: string | null;
+          packet_sequence: number | null;
+          previous_packet_auction_id: string | null;
+          is_waiting_for_previous: boolean;
+          auto_start_next: boolean;
           start_time: string;
           end_time: string;
           status: AuctionStatus;
@@ -130,6 +138,13 @@ export type Database = {
           starting_bid: number;
           min_increment?: number;
           reserve_price?: number | null;
+          bid_pricing_mode?: BidPricingMode;
+          duration_minutes?: number;
+          packet_series_id?: string | null;
+          packet_sequence?: number | null;
+          previous_packet_auction_id?: string | null;
+          is_waiting_for_previous?: boolean;
+          auto_start_next?: boolean;
           start_time: string;
           end_time: string;
           status?: AuctionStatus;
@@ -159,6 +174,13 @@ export type Database = {
           starting_bid?: number;
           min_increment?: number;
           reserve_price?: number | null;
+          bid_pricing_mode?: BidPricingMode;
+          duration_minutes?: number;
+          packet_series_id?: string | null;
+          packet_sequence?: number | null;
+          previous_packet_auction_id?: string | null;
+          is_waiting_for_previous?: boolean;
+          auto_start_next?: boolean;
           start_time?: string;
           end_time?: string;
           status?: AuctionStatus;
@@ -372,6 +394,31 @@ export type Database = {
         };
         Returns: Json;
       };
+      activate_packet: {
+        Args: {
+          p_auction_id: string;
+        };
+        Returns: Json;
+      };
+      activate_next_packet_if_needed: {
+        Args: {
+          p_ended_auction_id: string;
+        };
+        Returns: string | null;
+      };
+      can_activate_packet: {
+        Args: {
+          p_auction_id: string;
+          p_user_id: string;
+        };
+        Returns: boolean;
+      };
+      create_packet_series: {
+        Args: {
+          p_payload: Json;
+        };
+        Returns: Json;
+      };
       finalize_ended_auctions: {
         Args: Record<PropertyKey, never>;
         Returns: number;
@@ -396,6 +443,7 @@ export type Database = {
       seller_status: SellerStatus;
       role_group: RoleGroup;
       auction_status: AuctionStatus;
+      bid_pricing_mode: BidPricingMode;
       notification_type: NotificationType;
     };
     CompositeTypes: {

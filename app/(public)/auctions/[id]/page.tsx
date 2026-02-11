@@ -35,6 +35,14 @@ export default async function AuctionDetailPage({ params }: { params: Promise<{ 
       <div className="space-y-3">
         <div className="flex flex-wrap items-center gap-2">
           <AuctionStatusBadge status={auction.status} />
+          {auction.packet_series_id ? (
+            <Badge variant="outline">
+              Packet {auction.packet_sequence}
+            </Badge>
+          ) : null}
+          {auction.is_waiting_for_previous ? (
+            <Badge variant="warning">Waiting for previous packet</Badge>
+          ) : null}
           {auction.reserve_price ? (
             <Badge variant={auction.current_price >= auction.reserve_price ? "success" : "warning"}>
               {auction.current_price >= auction.reserve_price ? "Reserve met" : "Reserve not met"}
@@ -88,6 +96,16 @@ export default async function AuctionDetailPage({ params }: { params: Promise<{ 
                   <dd>{auction.avg_weight_kg ? `${auction.avg_weight_kg} kg` : "-"}</dd>
                 </div>
                 <div>
+                  <dt className="text-xs uppercase tracking-wide text-slate-500">Bidding mode</dt>
+                  <dd>{auction.bid_pricing_mode === "per_head" ? "Per head" : "Total lot"}</dd>
+                </div>
+                {auction.bid_pricing_mode === "per_head" ? (
+                  <div>
+                    <dt className="text-xs uppercase tracking-wide text-slate-500">Current packet total</dt>
+                    <dd>R {(auction.current_price * (auction.animal_count ?? 1)).toLocaleString("en-ZA")}</dd>
+                  </div>
+                ) : null}
+                <div>
                   <dt className="text-xs uppercase tracking-wide text-slate-500">Weight</dt>
                   <dd>{auction.weight ?? "-"}</dd>
                 </div>
@@ -121,6 +139,9 @@ export default async function AuctionDetailPage({ params }: { params: Promise<{ 
             isWinning={isWinning}
             bids={auction.bids}
             currentUserId={context.user?.id}
+            bidPricingMode={auction.bid_pricing_mode}
+            animalCount={auction.animal_count ?? 1}
+            isWaitingForPrevious={auction.is_waiting_for_previous}
           />
         </div>
       </div>

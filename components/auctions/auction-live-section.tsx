@@ -25,6 +25,9 @@ export function AuctionLiveSection({
   isWinning,
   bids,
   currentUserId,
+  bidPricingMode,
+  animalCount,
+  isWaitingForPrevious,
 }: {
   auctionId: string;
   status: "upcoming" | "live" | "ended";
@@ -36,6 +39,9 @@ export function AuctionLiveSection({
   isWinning: boolean;
   bids: BidRow[];
   currentUserId?: string;
+  bidPricingMode?: "lot_total" | "per_head";
+  animalCount?: number;
+  isWaitingForPrevious?: boolean;
 }) {
   const router = useRouter();
 
@@ -56,6 +62,9 @@ export function AuctionLiveSection({
         endTime={endTime}
         canBid={canBid}
         isWinning={isWinning}
+        bidPricingMode={bidPricingMode}
+        animalCount={animalCount}
+        isWaitingForPrevious={isWaitingForPrevious}
       />
       <div className="space-y-3 rounded-3xl border border-brand-100 bg-white/95 p-5 shadow-sm shadow-brand-100/40 dark:border-brand-900/40 dark:bg-slate-900/90">
         <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Bid history</h3>
