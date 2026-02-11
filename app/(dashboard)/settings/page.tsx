@@ -10,6 +10,7 @@ export default async function SettingsPage() {
       <ProfileSettingsForm
         defaultValues={{
           display_name: profile.display_name,
+          id_number: profile.id_number,
           phone: profile.phone,
           province: profile.province,
           email: profile.email,

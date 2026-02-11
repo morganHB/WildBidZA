@@ -25,7 +25,8 @@ export async function PATCH(request: Request) {
       .from("profiles")
       .update({
         display_name: parsed.data.display_name,
-        phone: parsed.data.phone || null,
+        phone: parsed.data.phone ? parsed.data.phone.replace(/[^\d+]/g, "") : null,
+        id_number: parsed.data.id_number ? parsed.data.id_number.replace(/\s+/g, "") : null,
         province: parsed.data.province || null,
         updated_at: new Date().toISOString(),
       })

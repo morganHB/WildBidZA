@@ -90,20 +90,6 @@ export default async function HomePage() {
                 heritage.
               </p>
             </div>
-
-            <div className="rounded-[2rem] border border-brand-100 bg-white/90 p-4 shadow-2xl shadow-brand-200/40 backdrop-blur dark:border-brand-900/40 dark:bg-slate-900/80 dark:shadow-none">
-              <div className="mb-4 flex items-center justify-between">
-                <div>
-                  <h2 className="text-xl font-semibold">Biosecurity map view</h2>
-                  <p className="text-sm text-slate-500">Zoomable livestock-risk monitor for disease-aware trading</p>
-                </div>
-                <span className="inline-flex animate-pulse items-center gap-1 rounded-full bg-red-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-red-700">
-                  <Sparkles className="h-3 w-3" />
-                  High alert
-                </span>
-              </div>
-              <BiosecurityMap />
-            </div>
           </div>
         </section>
 
@@ -153,6 +139,22 @@ export default async function HomePage() {
             </Button>
           </div>
           <AuctionGrid auctions={featured} />
+        </section>
+
+        <section className="mx-auto w-full max-w-7xl px-4 pb-16 sm:px-6 lg:px-8">
+          <div className="rounded-[2rem] border border-brand-100 bg-white/90 p-4 shadow-2xl shadow-brand-200/40 backdrop-blur dark:border-brand-900/40 dark:bg-slate-900/80 dark:shadow-none">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-semibold">Biosecurity map view</h2>
+                <p className="text-sm text-slate-500">Zoomable livestock-risk monitor for disease-aware trading</p>
+              </div>
+              <span className="inline-flex animate-pulse items-center gap-1 rounded-full bg-red-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-red-700">
+                <Sparkles className="h-3 w-3" />
+                High alert
+              </span>
+            </div>
+            <BiosecurityMap />
+          </div>
         </section>
       </main>
       <SiteFooter />

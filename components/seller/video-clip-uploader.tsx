@@ -21,6 +21,26 @@ export type DraftAuctionVideo = {
   duration_seconds: number;
 };
 
+function resolveDuration(video: HTMLVideoElement) {
+  const fromMetadata = Number(video.duration);
+  if (Number.isFinite(fromMetadata) && fromMetadata > 0) {
+    return fromMetadata;
+  }
+
+  try {
+    if (video.seekable.length > 0) {
+      const seekableEnd = Number(video.seekable.end(video.seekable.length - 1));
+      if (Number.isFinite(seekableEnd) && seekableEnd > 0) {
+        return seekableEnd;
+      }
+    }
+  } catch {
+    return 0;
+  }
+
+  return 0;
+}
+
 function formatSeconds(value: number) {
   if (!Number.isFinite(value) || value < 0) {
     return "0:00";
@@ -111,7 +131,13 @@ export function VideoClipUploader({
     }
 
     const syncStart = () => {
-      const nextDuration = Number.isFinite(video.duration) ? video.duration : 0;
+      const nextDuration = resolveDuration(video);
+      if (nextDuration <= 0) {
+        setDuration(0);
+        setTrimStart(0);
+        setTrimEnd(0);
+        return;
+      }
       setDuration(nextDuration);
       setTrimStart(0);
       setTrimEnd(nextDuration);
@@ -124,8 +150,10 @@ export function VideoClipUploader({
     }
 
     video.addEventListener("loadedmetadata", syncStart);
+    video.addEventListener("durationchange", syncStart);
     return () => {
       video.removeEventListener("loadedmetadata", syncStart);
+      video.removeEventListener("durationchange", syncStart);
     };
   }, [isEditing, workingFileUrl]);
 
@@ -155,14 +183,15 @@ export function VideoClipUploader({
   };
 
   const saveClip = async () => {
-    if (!workingFile || !workingFileUrl || duration <= 0) {
+    if (!workingFile || !workingFileUrl) {
       return;
     }
 
     setSaving(true);
     try {
+      const boundedStart = duration > 0 ? Math.min(trimStart, Math.max(0, duration - minWindow)) : 0;
       const normalizedEnd =
-        effectiveEnd >= duration - 0.2 ? null : Number(effectiveEnd.toFixed(2));
+        duration > 0 && effectiveEnd < duration - 0.2 ? Number(effectiveEnd.toFixed(2)) : null;
 
       onChange([
         ...value,
@@ -172,10 +201,10 @@ export function VideoClipUploader({
           previewUrl: workingFileUrl,
           fileName: inferFileName(workingFile.name || "auction-video", workingFile.type),
           contentType: workingFile.type || "video/mp4",
-          trim_start_seconds: Number(trimStart.toFixed(2)),
+          trim_start_seconds: Number(boundedStart.toFixed(2)),
           trim_end_seconds: normalizedEnd,
           muted,
-          duration_seconds: Number(duration.toFixed(2)),
+          duration_seconds: Number(Math.max(0, duration).toFixed(2)),
         },
       ]);
 
@@ -214,7 +243,7 @@ export function VideoClipUploader({
 
   const helperText = useMemo(() => {
     if (!duration) {
-      return "Upload MP4, MOV, or WebM. Set the playable clip and default audio state.";
+      return "Upload MP4, MOV, or WebM. If metadata is still loading, you can still save and continue.";
     }
     return `Clip ${formatSeconds(trimStart)} - ${formatSeconds(effectiveEnd)} (${formatSeconds(
       clipDuration,
@@ -368,7 +397,7 @@ export function VideoClipUploader({
             <Button type="button" variant="outline" onClick={clearEditor}>
               Cancel
             </Button>
-            <Button type="button" onClick={saveClip} disabled={saving || clipDuration < minWindow}>
+            <Button type="button" onClick={saveClip} disabled={saving}>
               {saving ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : null}
               Save clip
             </Button>

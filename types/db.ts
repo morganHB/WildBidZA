@@ -23,6 +23,7 @@ export type Database = {
           id: string;
           display_name: string | null;
           email: string | null;
+          id_number: string | null;
           phone: string | null;
           province: string | null;
           approval_status: ApprovalStatus;
@@ -36,6 +37,7 @@ export type Database = {
           id: string;
           display_name?: string | null;
           email?: string | null;
+          id_number?: string | null;
           phone?: string | null;
           province?: string | null;
           approval_status?: ApprovalStatus;
@@ -48,6 +50,7 @@ export type Database = {
         Update: {
           display_name?: string | null;
           email?: string | null;
+          id_number?: string | null;
           phone?: string | null;
           province?: string | null;
           approval_status?: ApprovalStatus;

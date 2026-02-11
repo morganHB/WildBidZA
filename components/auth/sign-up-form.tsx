@@ -26,6 +26,8 @@ export function SignUpForm() {
     defaultValues: {
       displayName: "",
       email: "",
+      phone: "",
+      idNumber: "",
       password: "",
       confirmPassword: "",
       popiaConsent: false,
@@ -44,6 +46,8 @@ export function SignUpForm() {
         emailRedirectTo: redirectTo,
         data: {
           display_name: values.displayName,
+          phone: values.phone,
+          id_number: values.idNumber,
           popia_consent: values.popiaConsent,
           terms_accepted: values.termsAccepted,
         },
@@ -59,7 +63,11 @@ export function SignUpForm() {
       await fetch("/api/profile", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ display_name: values.displayName }),
+        body: JSON.stringify({
+          display_name: values.displayName,
+          phone: values.phone,
+          id_number: values.idNumber,
+        }),
       }).catch(() => undefined);
 
       toast.success("Account created. Complete your profile while waiting for approval.");
@@ -98,6 +106,22 @@ export function SignUpForm() {
             <Label htmlFor="email">Email</Label>
             <Input id="email" type="email" autoComplete="email" {...form.register("email")} />
             {form.formState.errors.email ? <p className="text-xs text-red-500">{form.formState.errors.email.message}</p> : null}
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="phone">Cellphone number</Label>
+              <Input id="phone" type="tel" autoComplete="tel" placeholder="0821234567" {...form.register("phone")} />
+              {form.formState.errors.phone ? (
+                <p className="text-xs text-red-500">{form.formState.errors.phone.message}</p>
+              ) : null}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="id-number">ID number</Label>
+              <Input id="id-number" inputMode="numeric" placeholder="13-digit South African ID" {...form.register("idNumber")} />
+              {form.formState.errors.idNumber ? (
+                <p className="text-xs text-red-500">{form.formState.errors.idNumber.message}</p>
+              ) : null}
+            </div>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">

@@ -15,6 +15,7 @@ export function ProfileSettingsForm({
 }: {
   defaultValues: {
     display_name: string | null;
+    id_number: string | null;
     phone: string | null;
     province: string | null;
     email: string | null;
@@ -22,6 +23,7 @@ export function ProfileSettingsForm({
 }) {
   const [form, setForm] = useState({
     display_name: defaultValues.display_name ?? "",
+    id_number: defaultValues.id_number ?? "",
     phone: defaultValues.phone ?? "",
     province: defaultValues.province ?? "",
   });
@@ -74,7 +76,16 @@ export function ProfileSettingsForm({
           />
         </div>
         <div className="space-y-2">
-          <Label>Phone</Label>
+          <Label>ID number</Label>
+          <Input
+            value={form.id_number}
+            inputMode="numeric"
+            placeholder="13-digit South African ID"
+            onChange={(event) => setForm((state) => ({ ...state, id_number: event.target.value }))}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>Cellphone</Label>
           <Input value={form.phone} onChange={(event) => setForm((state) => ({ ...state, phone: event.target.value }))} />
         </div>
         <div className="space-y-2">
