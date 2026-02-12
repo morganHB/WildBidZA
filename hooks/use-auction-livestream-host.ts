@@ -97,6 +97,7 @@ export function useAuctionLivestreamHost({
   const sessionPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const sessionRef = useRef<LivestreamSession | null>(null);
+  const pendingIceCandidatesRef = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
 
   const connectionHealth = useMemo(() => {
     if (!session) {
@@ -135,6 +136,7 @@ export function useAuctionLivestreamHost({
       peer.close();
     });
     peersRef.current.clear();
+    pendingIceCandidatesRef.current.clear();
   }, []);
 
   const stopTracks = useCallback(() => {
@@ -235,6 +237,7 @@ export function useAuctionLivestreamHost({
                 peer.close();
                 peersRef.current.delete(leavingViewerId);
               }
+              pendingIceCandidatesRef.current.delete(leavingViewerId);
               return;
             }
 
@@ -267,6 +270,7 @@ export function useAuctionLivestreamHost({
 
                 if (peer.connectionState === "failed" || peer.connectionState === "closed") {
                   peersRef.current.delete(viewerId);
+                  pendingIceCandidatesRef.current.delete(viewerId);
                 }
               };
 
@@ -280,6 +284,13 @@ export function useAuctionLivestreamHost({
               }
 
               await peer.setRemoteDescription(offer);
+              const queued = pendingIceCandidatesRef.current.get(viewerId) ?? [];
+              if (queued.length > 0) {
+                pendingIceCandidatesRef.current.delete(viewerId);
+                for (const queuedCandidate of queued) {
+                  await peer.addIceCandidate(queuedCandidate).catch(() => undefined);
+                }
+              }
               const answer = await peer.createAnswer();
               await peer.setLocalDescription(answer);
 
@@ -298,7 +309,13 @@ export function useAuctionLivestreamHost({
             if (signal.signal_type === "ice_candidate") {
               const candidate = toIceCandidate(signal.payload);
               if (candidate) {
-                await peer.addIceCandidate(candidate).catch(() => undefined);
+                if (peer.currentRemoteDescription) {
+                  await peer.addIceCandidate(candidate).catch(() => undefined);
+                } else {
+                  const queued = pendingIceCandidatesRef.current.get(viewerId) ?? [];
+                  queued.push(candidate);
+                  pendingIceCandidatesRef.current.set(viewerId, queued);
+                }
               }
             }
           })();

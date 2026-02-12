@@ -66,6 +66,7 @@ export function useAuctionLivestreamViewer({
   const leaveSessionRef = useRef<string | null>(null);
   const hostUserRef = useRef<string | null>(null);
   const remoteStreamRef = useRef<MediaStream | null>(null);
+  const pendingIceCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
   const subscribedSessionRef = useRef<(() => void) | null>(null);
   const connectedRef = useRef(false);
 
@@ -88,6 +89,7 @@ export function useAuctionLivestreamViewer({
     if (pcRef.current) {
       pcRef.current.ontrack = null;
       pcRef.current.onicecandidate = null;
+      pcRef.current.onconnectionstatechange = null;
       pcRef.current.close();
       pcRef.current = null;
     }
@@ -116,6 +118,7 @@ export function useAuctionLivestreamViewer({
 
     leaveSessionRef.current = null;
     hostUserRef.current = null;
+    pendingIceCandidatesRef.current = [];
     connectedRef.current = false;
     setSessionId(null);
   }, [auctionId]);
@@ -153,6 +156,11 @@ export function useAuctionLivestreamViewer({
 
         const pc = new RTCPeerConnection(LIVESTREAM_ICE_CONFIG);
         pcRef.current = pc;
+        pendingIceCandidatesRef.current = [];
+
+        // Explicit recv-only transceivers improve browser interoperability for viewer-only peers.
+        pc.addTransceiver("video", { direction: "recvonly" });
+        pc.addTransceiver("audio", { direction: "recvonly" });
 
         const inboundStream = new MediaStream();
         remoteStreamRef.current = inboundStream;
@@ -188,6 +196,35 @@ export function useAuctionLivestreamViewer({
           }).catch(() => undefined);
         };
 
+        pc.onconnectionstatechange = () => {
+          if (!pcRef.current) {
+            return;
+          }
+
+          if (
+            pc.connectionState === "connected"
+            || pc.iceConnectionState === "connected"
+            || pc.iceConnectionState === "completed"
+          ) {
+            connectedRef.current = true;
+            if (connectTimeoutRef.current) {
+              clearTimeout(connectTimeoutRef.current);
+              connectTimeoutRef.current = null;
+            }
+            setStatus("live");
+            return;
+          }
+
+          if (
+            !connectedRef.current
+            && (pc.connectionState === "failed" || pc.connectionState === "closed")
+          ) {
+            setStatus("error");
+            setError("Unable to establish livestream connection. Ask the host to restart the stream.");
+            cleanup(false);
+          }
+        };
+
         const { unsubscribe } = subscribeToLivestreamSignals(
           joined.session_id,
           userId,
@@ -201,6 +238,13 @@ export function useAuctionLivestreamViewer({
                 const answer = toSessionDescription(signal.payload);
                 if (answer && !pcRef.current.currentRemoteDescription) {
                   await pcRef.current.setRemoteDescription(answer);
+                  if (pendingIceCandidatesRef.current.length > 0) {
+                    const queued = [...pendingIceCandidatesRef.current];
+                    pendingIceCandidatesRef.current = [];
+                    for (const candidate of queued) {
+                      await pcRef.current.addIceCandidate(candidate).catch(() => undefined);
+                    }
+                  }
                 }
                 if (connectTimeoutRef.current) {
                   clearTimeout(connectTimeoutRef.current);
@@ -212,7 +256,11 @@ export function useAuctionLivestreamViewer({
               if (signal.signal_type === "ice_candidate") {
                 const candidate = toIceCandidate(signal.payload);
                 if (candidate) {
-                  await pcRef.current.addIceCandidate(candidate).catch(() => undefined);
+                  if (pcRef.current.currentRemoteDescription) {
+                    await pcRef.current.addIceCandidate(candidate).catch(() => undefined);
+                  } else {
+                    pendingIceCandidatesRef.current.push(candidate);
+                  }
                 }
                 return;
               }
