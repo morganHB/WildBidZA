@@ -3,7 +3,9 @@ import { CircleUserRound, Gavel, Heart, LayoutDashboard, List, MessageSquareMore
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { isAdmin, isApprovedSeller } from "@/lib/auth/roles";
 import { APP_NAME } from "@/lib/constants/app";
+import { getUnreadNotificationCount } from "@/lib/notifications/service";
 import { ModeToggle } from "@/components/layout/mode-toggle";
+import { NotificationBell } from "@/components/layout/notification-bell";
 import { Button } from "@/components/ui/button";
 
 export async function DashboardShell({ children }: { children: React.ReactNode }) {
@@ -17,6 +19,7 @@ export async function DashboardShell({ children }: { children: React.ReactNode }
   }
 
   const { data: profile } = await supabase.from("profiles").select("*").eq("id", user.id).single();
+  const unreadCount = await getUnreadNotificationCount(user.id).catch(() => 0);
 
   const baseItems = [
     { href: "/dashboard", icon: LayoutDashboard, label: "Overview" },
@@ -38,6 +41,7 @@ export async function DashboardShell({ children }: { children: React.ReactNode }
           </Link>
           <div className="flex items-center gap-2">
             <ModeToggle />
+            <NotificationBell userId={user.id} initialUnreadCount={unreadCount} />
             <form action="/api/auth/sign-out" method="post">
               <Button variant="outline" size="sm" type="submit">
                 Sign out

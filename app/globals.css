@@ -94,3 +94,68 @@ h4 {
   background: rgb(var(--brand-200));
   color: rgb(var(--brand-900));
 }
+
+@keyframes auction-ended-appear {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes auction-winner-accent {
+  0% {
+    box-shadow: 0 0 0 0 rgba(5, 150, 105, 0.28);
+  }
+  100% {
+    box-shadow: 0 0 0 10px rgba(5, 150, 105, 0);
+  }
+}
+
+.auction-result-banner {
+  animation: auction-ended-appear 320ms ease-out both;
+}
+
+.auction-result-banner--ended {
+  border-color: rgb(var(--border));
+  background: rgb(241 245 249 / 0.7);
+  color: rgb(var(--foreground));
+}
+
+.auction-result-banner--winner {
+  border-color: rgb(var(--brand-300));
+  background: linear-gradient(135deg, rgb(var(--brand-50)), rgb(var(--brand-100) / 0.7));
+  color: rgb(var(--brand-900));
+  animation:
+    auction-ended-appear 320ms ease-out both,
+    auction-winner-accent 1400ms ease-out 1;
+}
+
+.auction-result-banner--neutral {
+  border-color: rgb(var(--border));
+  background: rgb(241 245 249 / 0.4);
+  color: rgb(var(--foreground));
+}
+
+.dark .auction-result-banner--ended {
+  background: rgb(15 23 42 / 0.45);
+}
+
+.dark .auction-result-banner--winner {
+  background: linear-gradient(135deg, rgb(6 78 59 / 0.45), rgb(4 120 87 / 0.25));
+  color: rgb(209 250 229);
+}
+
+.dark .auction-result-banner--neutral {
+  background: rgb(15 23 42 / 0.35);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auction-result-banner,
+  .auction-result-banner--winner {
+    animation: none;
+  }
+}

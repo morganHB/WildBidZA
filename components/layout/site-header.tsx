@@ -3,8 +3,10 @@ import { LayoutDashboard, PawPrint } from "lucide-react";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { isAdmin, isApprovedSeller } from "@/lib/auth/roles";
 import { APP_NAME } from "@/lib/constants/app";
+import { getUnreadNotificationCount } from "@/lib/notifications/service";
 import { Button } from "@/components/ui/button";
 import { ModeToggle } from "@/components/layout/mode-toggle";
+import { NotificationBell } from "@/components/layout/notification-bell";
 
 const baseNavItems = [
   { href: "/auctions/live", label: "Live Auctions" },
@@ -21,6 +23,7 @@ export async function SiteHeader() {
     ? await supabase.from("profiles").select("*").eq("id", user.id).single()
     : { data: null };
   const canSell = isApprovedSeller(profile) || isAdmin(profile);
+  const unreadCount = user ? await getUnreadNotificationCount(user.id).catch(() => 0) : 0;
   const navItems = canSell
     ? [...baseNavItems, { href: "/seller/create", label: "Sell" }]
     : baseNavItems;
@@ -50,11 +53,14 @@ export async function SiteHeader() {
         <div className="flex items-center gap-2 sm:gap-3">
           <ModeToggle />
           {user ? (
-            <Button asChild size="sm" className="rounded-full px-5">
-              <Link href="/dashboard">
-                <LayoutDashboard className="mr-2 h-4 w-4" /> Dashboard
-              </Link>
-            </Button>
+            <>
+              <NotificationBell userId={user.id} initialUnreadCount={unreadCount} />
+              <Button asChild size="sm" className="rounded-full px-5">
+                <Link href="/dashboard">
+                  <LayoutDashboard className="mr-2 h-4 w-4" /> Dashboard
+                </Link>
+              </Button>
+            </>
           ) : (
             <>
               <Button asChild variant="ghost" size="sm" className="rounded-full text-slate-700 dark:text-slate-200">

@@ -8,7 +8,20 @@ export type NotificationType =
   | "outbid"
   | "won_auction"
   | "approval_changed"
-  | "seller_status_changed";
+  | "seller_status_changed"
+  | "watchlist_closing_soon"
+  | "watched_auction_live"
+  | "deal_message";
+
+export type NotificationListItem = {
+  id: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  href: string;
+  created_at: string;
+  read_at: string | null;
+};
 
 export type AuctionListFilter = {
   q?: string;

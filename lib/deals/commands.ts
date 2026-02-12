@@ -1,4 +1,5 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import type { SendDealMessageInput } from "@/lib/validation/deal";
 
 export async function sendDealMessage(userId: string, auctionId: string, payload: SendDealMessageInput) {
@@ -7,7 +8,14 @@ export async function sendDealMessage(userId: string, auctionId: string, payload
 
   const { data: conversation, error: conversationError } = await supabase
     .from("auction_conversations")
-    .select("id")
+    .select(
+      `
+      id,
+      seller_id,
+      winner_id,
+      auction:auctions!auction_conversations_auction_id_fkey(title)
+    `,
+    )
     .eq("auction_id", auctionId)
     .single();
 
@@ -41,6 +49,50 @@ export async function sendDealMessage(userId: string, auctionId: string, payload
   }
 
   const sender = Array.isArray(data.sender) ? data.sender[0] : data.sender;
+  const recipientId = conversation.seller_id === userId ? conversation.winner_id : conversation.seller_id;
+  const auctionRelation = Array.isArray(conversation.auction) ? conversation.auction[0] : conversation.auction;
+  const auctionTitle = auctionRelation?.title ?? "Auction";
+
+  if (recipientId && recipientId !== userId) {
+    try {
+      const admin = createSupabaseAdminClient() as any;
+      const throttleSince = new Date(Date.now() - 2 * 60_000).toISOString();
+
+      const { data: recent, error: recentError } = await admin
+        .from("notifications")
+        .select("id")
+        .eq("user_id", recipientId)
+        .eq("type", "deal_message")
+        .gte("created_at", throttleSince)
+        .filter("payload->>auction_id", "eq", auctionId)
+        .limit(1);
+
+      if (recentError) {
+        throw recentError;
+      }
+
+      if (!recent || recent.length === 0) {
+        const { error: notifyError } = await admin.from("notifications").insert({
+          user_id: recipientId,
+          type: "deal_message",
+          payload: {
+            auction_id: auctionId,
+            auction_title: auctionTitle,
+            message_id: data.id,
+            sender_name: sender?.display_name ?? "Participant",
+            target_path: `/deals/${auctionId}`,
+            created_at: new Date().toISOString(),
+          },
+        });
+
+        if (notifyError) {
+          throw notifyError;
+        }
+      }
+    } catch (notifyError) {
+      console.error("Failed to create deal message notification", notifyError);
+    }
+  }
 
   return {
     id: data.id,
