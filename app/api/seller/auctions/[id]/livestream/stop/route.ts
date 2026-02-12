@@ -1,25 +1,21 @@
 import { NextResponse } from "next/server";
-import { activateNextPacket } from "@/lib/auctions/commands";
+import { stopLivestream } from "@/lib/auctions/commands";
 import { requireAuthContext } from "@/lib/auth/guard";
 
 export async function POST(_: Request, context: { params: Promise<{ id: string }> }) {
   try {
-    const { user, profile } = await requireAuthContext();
+    const { user } = await requireAuthContext();
     const { id } = await context.params;
 
-    const data = await activateNextPacket({
+    const data = await stopLivestream({
       auctionId: id,
       actorId: user.id,
-      isAdmin: profile.is_admin,
     });
 
     return NextResponse.json({ ok: true, data });
   } catch (error) {
     return NextResponse.json(
-      {
-        ok: false,
-        error: error instanceof Error ? error.message : "Failed to activate next packet",
-      },
+      { ok: false, error: error instanceof Error ? error.message : "Failed to stop livestream" },
       { status: 400 },
     );
   }

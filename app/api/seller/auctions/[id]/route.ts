@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { updateAuction } from "@/lib/auctions/commands";
-import { requireSellerContext } from "@/lib/auth/guard";
+import { requireAuthContext } from "@/lib/auth/guard";
 import { updateAuctionSchema } from "@/lib/validation/auction";
 
 export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
-    const { user } = await requireSellerContext();
+    const { user } = await requireAuthContext();
     const { id } = await context.params;
     const body = await request.json();
 

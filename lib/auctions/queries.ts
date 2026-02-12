@@ -233,6 +233,21 @@ export async function getAuctionById(auctionId: string, userId?: string | null) 
   }
 
   let isFavorited = false;
+  let canManage = false;
+  let canStream = false;
+  let activeLivestream: {
+    id: string;
+    auction_id: string;
+    host_user_id: string;
+    is_live: boolean;
+    started_at: string;
+    ended_at: string | null;
+    audio_enabled: boolean;
+    max_viewers: number;
+    created_at: string;
+    updated_at: string;
+  } | null = null;
+
   if (userId) {
     const { data: favoriteRow } = await supabase
       .from("favorites")
@@ -242,6 +257,46 @@ export async function getAuctionById(auctionId: string, userId?: string | null) 
       .maybeSingle();
 
     isFavorited = Boolean(favoriteRow);
+
+    const [
+      { data: canManageData, error: canManageError },
+      { data: canStreamData, error: canStreamError },
+      { data: liveSession, error: liveSessionError },
+    ] = await Promise.all([
+      supabase.rpc("can_manage_auction", {
+        p_auction_id: auctionId,
+        p_user_id: userId,
+      }),
+      supabase.rpc("can_stream_auction", {
+        p_auction_id: auctionId,
+        p_user_id: userId,
+      }),
+      supabase
+        .from("auction_livestream_sessions")
+        .select("id,auction_id,host_user_id,is_live,started_at,ended_at,audio_enabled,max_viewers,created_at,updated_at")
+        .eq("auction_id", auctionId)
+        .eq("is_live", true)
+        .is("ended_at", null)
+        .order("started_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ]);
+
+    if (canManageError) {
+      throw new Error(canManageError.message);
+    }
+
+    if (canStreamError) {
+      throw new Error(canStreamError.message);
+    }
+
+    if (liveSessionError) {
+      throw new Error(liveSessionError.message);
+    }
+
+    canManage = Boolean(canManageData);
+    canStream = Boolean(canStreamData);
+    activeLivestream = (liveSession ?? null) as typeof activeLivestream;
   }
 
   const highestBid = (bids ?? []).reduce((acc, row) => Math.max(acc, row.amount), auction.starting_bid);
@@ -275,6 +330,9 @@ export async function getAuctionById(auctionId: string, userId?: string | null) 
         created_at: string;
       }[]) ?? []),
     ].sort((a, b) => a.sort_order - b.sort_order),
+    can_manage: canManage,
+    can_stream: canStream,
+    active_livestream: activeLivestream,
   };
 }
 
@@ -384,6 +442,94 @@ export async function getSellerListings(sellerId: string) {
       ].sort((a, b) => a.sort_order - b.sort_order),
     };
   });
+}
+
+export async function getManagedListings(userId: string) {
+  const supabase = await createSupabaseServerClient();
+  const nowIso = new Date().toISOString();
+
+  const { data, error } = await supabase
+    .from("auction_managers")
+    .select(
+      `
+      can_edit,
+      can_stream,
+      auction:auctions(
+        *,
+        seller:profiles!auctions_seller_id_fkey(id,display_name),
+        category:animal_categories(name),
+        images:auction_images(storage_path,sort_order),
+        videos:auction_videos(storage_path,sort_order,trim_start_seconds,trim_end_seconds,muted),
+        bids:bids!bids_auction_id_fkey(amount)
+      )
+    `,
+    )
+    .eq("manager_user_id", userId)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return (data ?? [])
+    .map((row) => {
+      const auction = (Array.isArray(row.auction) ? row.auction[0] : row.auction) as
+        | (AuctionRow & {
+            seller: { id: string; display_name: string | null } | null;
+            category: { name: string } | null;
+            images: { storage_path: string; sort_order: number }[] | null;
+            videos:
+              | {
+                  storage_path: string;
+                  sort_order: number;
+                  trim_start_seconds: number;
+                  trim_end_seconds: number | null;
+                  muted: boolean;
+                }[]
+              | null;
+            bids: { amount: number }[] | null;
+          })
+        | null;
+
+      if (!auction) {
+        return null;
+      }
+
+      const bids = auction.bids ?? [];
+      const current_price = bids.reduce((acc, bid) => Math.max(acc, bid.amount), auction.starting_bid);
+
+      return {
+        ...auction,
+        status: deriveStatus(auction, nowIso),
+        bids,
+        current_price,
+        manager_can_edit: row.can_edit,
+        manager_can_stream: row.can_stream,
+        images: [...(auction.images ?? [])].sort((a, b) => a.sort_order - b.sort_order),
+        videos: [...(auction.videos ?? [])].sort((a, b) => a.sort_order - b.sort_order),
+      };
+    })
+    .filter(
+      (
+        item,
+      ): item is AuctionRow & {
+        seller: { id: string; display_name: string | null } | null;
+        category: { name: string } | null;
+        images: { storage_path: string; sort_order: number }[];
+        videos: {
+          storage_path: string;
+          sort_order: number;
+          trim_start_seconds: number;
+          trim_end_seconds: number | null;
+          muted: boolean;
+        }[];
+        bids: { amount: number }[];
+        status: "upcoming" | "live" | "ended";
+        current_price: number;
+        manager_can_edit: boolean;
+        manager_can_stream: boolean;
+      } => item !== null,
+    );
 }
 
 export async function getAdminOverview() {

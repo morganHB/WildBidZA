@@ -2,6 +2,8 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { AuctionGallery } from "@/components/auctions/auction-gallery";
 import { EditAuctionForm } from "@/components/seller/edit-auction-form";
+import { LivestreamHostPanel } from "@/components/seller/livestream-host-panel";
+import { ManageAuctionManagersCard } from "@/components/seller/manage-auction-managers-card";
 import { StartNextPacketButton } from "@/components/seller/start-next-packet-button";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,7 +12,7 @@ import { getActiveCategories, getAuctionById, getSiteSettings } from "@/lib/auct
 import { formatZar } from "@/lib/utils/currency";
 
 export default async function SellerListingDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { user } = await requireSellerPage();
+  const { user, profile } = await requireSellerPage();
   const { id } = await params;
 
   const [auction, categories, settings] = await Promise.all([
@@ -19,7 +21,7 @@ export default async function SellerListingDetailPage({ params }: { params: Prom
     getSiteSettings(),
   ]);
 
-  if (!auction || auction.seller_id !== user.id) {
+  if (!auction || !auction.can_manage) {
     notFound();
   }
 
@@ -88,6 +90,19 @@ export default async function SellerListingDetailPage({ params }: { params: Prom
             ) : null}
           </CardContent>
         </Card>
+        <LivestreamHostPanel
+          auctionId={auction.id}
+          userId={user.id}
+          canHost={auction.can_stream}
+          isAuctionLive={auction.status === "live"}
+        />
+        <ManageAuctionManagersCard
+          auctionId={auction.id}
+          currentUserId={user.id}
+          auctionOwnerId={auction.seller_id}
+          isAdmin={profile.is_admin}
+          canManage={auction.can_manage}
+        />
       </div>
     </div>
   );

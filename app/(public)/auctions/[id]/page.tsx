@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { AuctionGallery } from "@/components/auctions/auction-gallery";
+import { AuctionLivestreamCard } from "@/components/auctions/auction-livestream-card";
 import { AuctionLiveSection } from "@/components/auctions/auction-live-section";
 import { AuctionResultBanner } from "@/components/auctions/auction-result-banner";
 import { AuctionStatusBadge } from "@/components/auctions/status-badge";
@@ -66,6 +67,12 @@ export default async function AuctionDetailPage({ params }: { params: Promise<{ 
           <div className="flex flex-wrap gap-2">
             <WatchToggle auctionId={auction.id} isFavorited={auction.is_favorited} />
           </div>
+          <AuctionLivestreamCard
+            auctionId={auction.id}
+            userId={context.user?.id}
+            hasActiveStream={Boolean(auction.active_livestream)}
+            startedAt={auction.active_livestream?.started_at}
+          />
           <Tabs defaultValue="description" className="w-full">
             <TabsList>
               <TabsTrigger value="description">Description</TabsTrigger>

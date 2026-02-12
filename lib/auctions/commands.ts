@@ -5,7 +5,47 @@ import type {
   CreatePacketSeriesInput,
   UpdateAuctionInput,
 } from "@/lib/validation/auction";
+import type { InviteAuctionManagerInput } from "@/lib/validation/manager";
+import type {
+  LivestreamSessionInput,
+  LivestreamSignalInput,
+  StartLivestreamInput,
+} from "@/lib/validation/livestream";
 import type { SettingsUpdateInput } from "@/lib/validation/settings";
+
+async function canManageAuction(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  auctionId: string,
+  userId: string,
+) {
+  const { data, error } = await supabase.rpc("can_manage_auction", {
+    p_auction_id: auctionId,
+    p_user_id: userId,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return Boolean(data);
+}
+
+async function canStreamAuction(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  auctionId: string,
+  userId: string,
+) {
+  const { data, error } = await supabase.rpc("can_stream_auction", {
+    p_auction_id: auctionId,
+    p_user_id: userId,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return Boolean(data);
+}
 
 export async function createAuction(sellerId: string, payload: CreateAuctionInput) {
   const supabase = await createSupabaseServerClient();
@@ -75,7 +115,8 @@ export async function updateAuction(sellerId: string, auctionId: string, payload
     throw new Error(existingError?.message ?? "Auction not found");
   }
 
-  if (existing.seller_id !== sellerId) {
+  const allowed = await canManageAuction(supabase, auctionId, sellerId);
+  if (!allowed) {
     throw new Error("Not authorized to update this listing");
   }
 
@@ -100,11 +141,7 @@ export async function updateAuction(sellerId: string, auctionId: string, payload
     updatePayload.duration_minutes = Math.max(10, Math.min(10080, Number(duration_minutes)));
   }
 
-  const { error } = await supabase
-    .from("auctions")
-    .update(updatePayload)
-    .eq("id", auctionId)
-    .eq("seller_id", sellerId);
+  const { error } = await supabase.from("auctions").update(updatePayload).eq("id", auctionId);
 
   if (error) {
     throw new Error(error.message);
@@ -164,7 +201,8 @@ export async function activateNextPacket(params: {
     throw new Error(auctionError?.message ?? "Auction not found");
   }
 
-  if (!params.isAdmin && auction.seller_id !== params.actorId) {
+  const canManage = await canManageAuction(supabase, params.auctionId, params.actorId);
+  if (!params.isAdmin && !canManage) {
     throw new Error("Not authorized to activate the next packet");
   }
 
@@ -232,6 +270,254 @@ export async function removeFavorite(auctionId: string, userId: string) {
   if (error) {
     throw new Error(error.message);
   }
+}
+
+export async function listAuctionManagers(auctionId: string, actorId: string) {
+  const supabase = await createSupabaseServerClient();
+  const canManage = await canManageAuction(supabase, auctionId, actorId);
+
+  if (!canManage) {
+    throw new Error("Not authorized to view managers for this auction");
+  }
+
+  const { data, error } = await supabase
+    .from("auction_managers")
+    .select(
+      `
+      auction_id,
+      manager_user_id,
+      invited_by_user_id,
+      can_edit,
+      can_stream,
+      created_at,
+      profile:profiles!auction_managers_manager_user_id_fkey(
+        id,
+        display_name,
+        email,
+        role_group,
+        is_admin,
+        approval_status
+      )
+    `,
+    )
+    .eq("auction_id", auctionId)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data ?? [];
+}
+
+export async function inviteAuctionManager(params: {
+  auctionId: string;
+  actorId: string;
+  actorIsAdmin: boolean;
+  payload: InviteAuctionManagerInput;
+}) {
+  const supabase = await createSupabaseServerClient();
+  const { auctionId, actorId, actorIsAdmin, payload } = params;
+
+  const { data: auction, error: auctionError } = await supabase
+    .from("auctions")
+    .select("id,seller_id")
+    .eq("id", auctionId)
+    .single();
+
+  if (auctionError || !auction) {
+    throw new Error(auctionError?.message ?? "Auction not found");
+  }
+
+  if (!actorIsAdmin && auction.seller_id !== actorId) {
+    throw new Error("Only the auction owner or admin can invite managers");
+  }
+
+  if (payload.manager_user_id === auction.seller_id) {
+    throw new Error("Auction owner already has full management access");
+  }
+
+  const { data: invitee, error: inviteeError } = await supabase
+    .from("profiles")
+    .select("id,approval_status,role_group,is_admin")
+    .eq("id", payload.manager_user_id)
+    .single();
+
+  if (inviteeError || !invitee) {
+    throw new Error("Invitee profile not found");
+  }
+
+  const eligible =
+    invitee.approval_status === "approved" &&
+    (invitee.is_admin || invitee.role_group === "marketer");
+
+  if (!eligible) {
+    throw new Error("Invitee must be an approved marketer or admin");
+  }
+
+  const { error } = await supabase.from("auction_managers").upsert({
+    auction_id: auctionId,
+    manager_user_id: payload.manager_user_id,
+    invited_by_user_id: actorId,
+    can_edit: payload.can_edit ?? true,
+    can_stream: payload.can_stream ?? true,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  await supabase.from("audit_log").insert({
+    actor_id: actorId,
+    action: "auction.manager_invited",
+    target_type: "auction_manager",
+    target_id: `${auctionId}:${payload.manager_user_id}`,
+    metadata: {
+      auction_id: auctionId,
+      manager_user_id: payload.manager_user_id,
+      can_edit: payload.can_edit ?? true,
+      can_stream: payload.can_stream ?? true,
+    },
+  });
+}
+
+export async function revokeAuctionManager(params: {
+  auctionId: string;
+  actorId: string;
+  actorIsAdmin: boolean;
+  managerUserId: string;
+}) {
+  const supabase = await createSupabaseServerClient();
+
+  const { data: auction, error: auctionError } = await supabase
+    .from("auctions")
+    .select("id,seller_id")
+    .eq("id", params.auctionId)
+    .single();
+
+  if (auctionError || !auction) {
+    throw new Error(auctionError?.message ?? "Auction not found");
+  }
+
+  if (!params.actorIsAdmin && auction.seller_id !== params.actorId) {
+    throw new Error("Only the auction owner or admin can revoke managers");
+  }
+
+  const { error } = await supabase
+    .from("auction_managers")
+    .delete()
+    .eq("auction_id", params.auctionId)
+    .eq("manager_user_id", params.managerUserId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  await supabase.from("audit_log").insert({
+    actor_id: params.actorId,
+    action: "auction.manager_revoked",
+    target_type: "auction_manager",
+    target_id: `${params.auctionId}:${params.managerUserId}`,
+    metadata: {
+      auction_id: params.auctionId,
+      manager_user_id: params.managerUserId,
+    },
+  });
+}
+
+export async function startLivestream(params: {
+  auctionId: string;
+  actorId: string;
+  payload: StartLivestreamInput;
+}) {
+  const supabase = await createSupabaseServerClient();
+  const allowed = await canStreamAuction(supabase, params.auctionId, params.actorId);
+
+  if (!allowed) {
+    throw new Error("Not authorized to start livestream");
+  }
+
+  const { data, error } = await supabase.rpc("start_livestream", {
+    p_auction_id: params.auctionId,
+    p_audio_enabled: params.payload.audio_enabled ?? true,
+    p_max_viewers: params.payload.max_viewers ?? 30,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data;
+}
+
+export async function stopLivestream(params: { auctionId: string; actorId: string }) {
+  const supabase = await createSupabaseServerClient();
+  const allowed = await canStreamAuction(supabase, params.auctionId, params.actorId);
+
+  if (!allowed) {
+    throw new Error("Not authorized to stop livestream");
+  }
+
+  const { data, error } = await supabase.rpc("stop_livestream", {
+    p_auction_id: params.auctionId,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data;
+}
+
+export async function joinLivestream(auctionId: string) {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("join_livestream", {
+    p_auction_id: auctionId,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data;
+}
+
+export async function touchLivestreamViewer(payload: LivestreamSessionInput) {
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.rpc("touch_livestream_viewer", {
+    p_session_id: payload.session_id,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+export async function leaveLivestream(payload: LivestreamSessionInput) {
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.rpc("leave_livestream", {
+    p_session_id: payload.session_id,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+export async function publishLivestreamSignal(payload: LivestreamSignalInput) {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("publish_livestream_signal", {
+    p_session_id: payload.session_id,
+    p_to_user_id: payload.to_user_id,
+    p_signal_type: payload.signal_type,
+    p_payload: payload.payload ?? {},
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data;
 }
 
 export async function updateSettings(payload: SettingsUpdateInput, actorId: string) {

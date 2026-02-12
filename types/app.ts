@@ -3,6 +3,7 @@ export type SellerStatus = "none" | "approved";
 export type RoleGroup = "user" | "marketer";
 export type AuctionStatus = "upcoming" | "live" | "ended";
 export type BidPricingMode = "lot_total" | "per_head";
+export type LivestreamSignalType = "offer" | "answer" | "ice_candidate" | "leave";
 
 export type NotificationType =
   | "outbid"
@@ -21,6 +22,44 @@ export type NotificationListItem = {
   href: string;
   created_at: string;
   read_at: string | null;
+};
+
+export type AuctionManager = {
+  auction_id: string;
+  manager_user_id: string;
+  invited_by_user_id: string;
+  can_edit: boolean;
+  can_stream: boolean;
+  created_at: string;
+  profile?: {
+    id: string;
+    display_name: string | null;
+    email: string | null;
+    role_group: RoleGroup;
+    is_admin: boolean;
+    approval_status: ApprovalStatus;
+  } | null;
+};
+
+export type AuctionLivestreamSession = {
+  id: string;
+  auction_id: string;
+  host_user_id: string;
+  is_live: boolean;
+  started_at: string;
+  ended_at: string | null;
+  audio_enabled: boolean;
+  max_viewers: number;
+  created_at: string;
+  updated_at: string;
+  viewer_count?: number;
+};
+
+export type AuctionLivestreamAvailability = {
+  has_active_stream: boolean;
+  session: AuctionLivestreamSession | null;
+  can_host: boolean;
+  can_view: boolean;
 };
 
 export type AuctionListFilter = {

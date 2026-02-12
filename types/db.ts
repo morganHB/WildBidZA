@@ -2,6 +2,7 @@ import type {
   ApprovalStatus,
   AuctionStatus,
   BidPricingMode,
+  LivestreamSignalType,
   NotificationType,
   RoleGroup,
   SellerStatus,
@@ -302,6 +303,103 @@ export type Database = {
         };
         Update: never;
       };
+      auction_managers: {
+        Row: {
+          auction_id: string;
+          manager_user_id: string;
+          invited_by_user_id: string;
+          can_edit: boolean;
+          can_stream: boolean;
+          created_at: string;
+        };
+        Insert: {
+          auction_id: string;
+          manager_user_id: string;
+          invited_by_user_id: string;
+          can_edit?: boolean;
+          can_stream?: boolean;
+          created_at?: string;
+        };
+        Update: {
+          can_edit?: boolean;
+          can_stream?: boolean;
+        };
+      };
+      auction_livestream_sessions: {
+        Row: {
+          id: string;
+          auction_id: string;
+          host_user_id: string;
+          is_live: boolean;
+          started_at: string;
+          ended_at: string | null;
+          audio_enabled: boolean;
+          max_viewers: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          auction_id: string;
+          host_user_id: string;
+          is_live?: boolean;
+          started_at?: string;
+          ended_at?: string | null;
+          audio_enabled?: boolean;
+          max_viewers?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          is_live?: boolean;
+          started_at?: string;
+          ended_at?: string | null;
+          audio_enabled?: boolean;
+          max_viewers?: number;
+          updated_at?: string;
+        };
+      };
+      auction_livestream_viewers: {
+        Row: {
+          session_id: string;
+          viewer_user_id: string;
+          joined_at: string;
+          last_seen: string;
+          left_at: string | null;
+        };
+        Insert: {
+          session_id: string;
+          viewer_user_id: string;
+          joined_at?: string;
+          last_seen?: string;
+          left_at?: string | null;
+        };
+        Update: {
+          last_seen?: string;
+          left_at?: string | null;
+        };
+      };
+      auction_livestream_signals: {
+        Row: {
+          id: string;
+          session_id: string;
+          from_user_id: string;
+          to_user_id: string;
+          signal_type: LivestreamSignalType;
+          payload: Json;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          session_id: string;
+          from_user_id: string;
+          to_user_id: string;
+          signal_type: LivestreamSignalType;
+          payload?: Json;
+          created_at?: string;
+        };
+        Update: never;
+      };
       settings: {
         Row: {
           id: number;
@@ -416,11 +514,74 @@ export type Database = {
         };
         Returns: boolean;
       };
+      can_manage_auction: {
+        Args: {
+          p_auction_id: string;
+          p_user_id: string;
+        };
+        Returns: boolean;
+      };
+      can_stream_auction: {
+        Args: {
+          p_auction_id: string;
+          p_user_id: string;
+        };
+        Returns: boolean;
+      };
       create_packet_series: {
         Args: {
           p_payload: Json;
         };
         Returns: Json;
+      };
+      start_livestream: {
+        Args: {
+          p_auction_id: string;
+          p_audio_enabled: boolean;
+          p_max_viewers?: number;
+        };
+        Returns: Json;
+      };
+      stop_livestream: {
+        Args: {
+          p_auction_id: string;
+        };
+        Returns: Json;
+      };
+      join_livestream: {
+        Args: {
+          p_auction_id: string;
+        };
+        Returns: Json;
+      };
+      touch_livestream_viewer: {
+        Args: {
+          p_session_id: string;
+        };
+        Returns: undefined;
+      };
+      leave_livestream: {
+        Args: {
+          p_session_id: string;
+        };
+        Returns: undefined;
+      };
+      publish_livestream_signal: {
+        Args: {
+          p_session_id: string;
+          p_to_user_id: string;
+          p_signal_type: LivestreamSignalType;
+          p_payload: Json;
+        };
+        Returns: string;
+      };
+      cleanup_livestream_signals: {
+        Args: Record<PropertyKey, never>;
+        Returns: number;
+      };
+      cleanup_stale_livestream_viewers: {
+        Args: Record<PropertyKey, never>;
+        Returns: number;
       };
       finalize_ended_auctions: {
         Args: Record<PropertyKey, never>;
@@ -447,6 +608,7 @@ export type Database = {
       role_group: RoleGroup;
       auction_status: AuctionStatus;
       bid_pricing_mode: BidPricingMode;
+      livestream_signal_type: LivestreamSignalType;
       notification_type: NotificationType;
     };
     CompositeTypes: {

@@ -3,11 +3,14 @@ import { Layers, Plus } from "lucide-react";
 import { SellerListingsTable } from "@/components/seller/seller-listings-table";
 import { Button } from "@/components/ui/button";
 import { requireSellerPage } from "@/lib/auth/guard";
-import { getSellerListings } from "@/lib/auctions/queries";
+import { getManagedListings, getSellerListings } from "@/lib/auctions/queries";
 
 export default async function SellerListingsPage() {
   const { user } = await requireSellerPage();
-  const listings = await getSellerListings(user.id);
+  const [listings, managedListings] = await Promise.all([
+    getSellerListings(user.id),
+    getManagedListings(user.id),
+  ]);
 
   return (
     <div className="space-y-4">
@@ -27,6 +30,10 @@ export default async function SellerListingsPage() {
         </div>
       </div>
       <SellerListingsTable listings={listings as any} />
+      <div className="space-y-2">
+        <h2 className="text-lg font-semibold tracking-tight">Managed by me</h2>
+        <SellerListingsTable listings={managedListings as any} />
+      </div>
     </div>
   );
 }
