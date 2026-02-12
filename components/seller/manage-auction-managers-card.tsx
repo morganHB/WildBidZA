@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 type ManagerRow = {
   auction_id: string;
@@ -35,6 +35,15 @@ type ManagerRow = {
       }[];
 };
 
+type EligibleManager = {
+  id: string;
+  display_name: string | null;
+  email: string | null;
+  role_group: "user" | "marketer";
+  is_admin: boolean;
+  approval_status: "pending" | "approved" | "rejected";
+};
+
 export function ManageAuctionManagersCard({
   auctionId,
   currentUserId,
@@ -51,8 +60,9 @@ export function ManageAuctionManagersCard({
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [revokeId, setRevokeId] = useState<string | null>(null);
-  const [managerUserId, setManagerUserId] = useState("");
+  const [selectedEligibleId, setSelectedEligibleId] = useState("");
   const [managers, setManagers] = useState<ManagerRow[]>([]);
+  const [eligibleUsers, setEligibleUsers] = useState<EligibleManager[]>([]);
 
   const canInvite = isAdmin || currentUserId === auctionOwnerId;
 
@@ -71,13 +81,21 @@ export function ManageAuctionManagersCard({
       const response = await fetch(`/api/seller/auctions/${auctionId}/managers`, {
         cache: "no-store",
       });
-      const payload = (await response.json()) as { ok: boolean; data?: ManagerRow[]; error?: string };
+      const payload = (await response.json()) as {
+        ok: boolean;
+        data?: {
+          managers: ManagerRow[];
+          eligible_users: EligibleManager[];
+        };
+        error?: string;
+      };
 
       if (!response.ok || !payload.ok) {
         throw new Error(payload.error ?? "Failed to load managers");
       }
 
-      setManagers(payload.data ?? []);
+      setManagers(payload.data?.managers ?? []);
+      setEligibleUsers(payload.data?.eligible_users ?? []);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to load managers");
     } finally {
@@ -90,8 +108,8 @@ export function ManageAuctionManagersCard({
   }, [loadManagers]);
 
   const inviteManager = async () => {
-    if (!managerUserId.trim()) {
-      toast.error("Enter the user ID to invite");
+    if (!selectedEligibleId) {
+      toast.error("Select a marketer or admin to invite");
       return;
     }
 
@@ -102,7 +120,7 @@ export function ManageAuctionManagersCard({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          manager_user_id: managerUserId.trim(),
+          manager_user_id: selectedEligibleId,
           can_edit: true,
           can_stream: true,
         }),
@@ -114,7 +132,7 @@ export function ManageAuctionManagersCard({
       }
 
       toast.success("Manager invited");
-      setManagerUserId("");
+      setSelectedEligibleId("");
       await loadManagers();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to invite manager");
@@ -150,17 +168,38 @@ export function ManageAuctionManagersCard({
       <CardHeader>
         <CardTitle>Invite to manage</CardTitle>
         <CardDescription>
-          Invite approved marketer/admin users by user ID to co-manage this auction and control livestream.
+          Select an approved marketer/admin user to co-manage this auction, including editing and livestream control.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         {canInvite ? (
           <div className="flex flex-col gap-2 sm:flex-row">
-            <Input
-              value={managerUserId}
-              onChange={(event) => setManagerUserId(event.target.value)}
-              placeholder="Manager user UUID"
-            />
+            <Select value={selectedEligibleId} onValueChange={setSelectedEligibleId}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select marketer/admin" />
+              </SelectTrigger>
+              <SelectContent>
+                {eligibleUsers.length === 0 ? (
+                  <SelectItem value="none" disabled>
+                    No eligible users available
+                  </SelectItem>
+                ) : (
+                  eligibleUsers.map((candidate) => {
+                    const roleLabel = candidate.is_admin ? "Admin" : "Marketer";
+                    const label =
+                      candidate.display_name?.trim() ||
+                      candidate.email?.trim() ||
+                      candidate.id;
+
+                    return (
+                      <SelectItem key={candidate.id} value={candidate.id}>
+                        {label} - {roleLabel}
+                      </SelectItem>
+                    );
+                  })
+                )}
+              </SelectContent>
+            </Select>
             <Button type="button" onClick={inviteManager} disabled={submitting}>
               {submitting ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-4 w-4" />}
               Invite

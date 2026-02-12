@@ -310,6 +310,56 @@ export async function listAuctionManagers(auctionId: string, actorId: string) {
   return data ?? [];
 }
 
+export async function listEligibleAuctionManagers(params: {
+  auctionId: string;
+  actorId: string;
+  actorIsAdmin: boolean;
+}) {
+  const supabase = await createSupabaseServerClient();
+
+  const { data: auction, error: auctionError } = await supabase
+    .from("auctions")
+    .select("id,seller_id")
+    .eq("id", params.auctionId)
+    .single();
+
+  if (auctionError || !auction) {
+    throw new Error(auctionError?.message ?? "Auction not found");
+  }
+
+  if (!params.actorIsAdmin && auction.seller_id !== params.actorId) {
+    throw new Error("Only the auction owner or admin can invite managers");
+  }
+
+  const [{ data: candidates, error: candidateError }, { data: existingManagers, error: existingError }] =
+    await Promise.all([
+      supabase
+        .from("profiles")
+        .select("id,display_name,email,role_group,is_admin,approval_status")
+        .eq("approval_status", "approved")
+        .or("role_group.eq.marketer,is_admin.eq.true")
+        .neq("id", auction.seller_id)
+        .order("display_name", { ascending: true, nullsFirst: false })
+        .order("email", { ascending: true }),
+      supabase
+        .from("auction_managers")
+        .select("manager_user_id")
+        .eq("auction_id", params.auctionId),
+    ]);
+
+  if (candidateError) {
+    throw new Error(candidateError.message);
+  }
+
+  if (existingError) {
+    throw new Error(existingError.message);
+  }
+
+  const taken = new Set((existingManagers ?? []).map((row) => row.manager_user_id));
+
+  return (candidates ?? []).filter((candidate) => !taken.has(candidate.id));
+}
+
 export async function inviteAuctionManager(params: {
   auctionId: string;
   actorId: string;
