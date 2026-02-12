@@ -3,11 +3,13 @@ import { Clock3, Gavel, ShieldCheck } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { requireAuthPage } from "@/lib/auth/guard";
+import { isAdmin, isApprovedSeller } from "@/lib/auth/roles";
 import { getMyBids, getWatchlist } from "@/lib/auctions/queries";
 import { APP_NAME } from "@/lib/constants/app";
 
 export default async function DashboardPage() {
   const { user, profile } = await requireAuthPage();
+  const buyerOnly = !isApprovedSeller(profile) && !isAdmin(profile);
 
   const [myBids, watchlist] = await Promise.all([getMyBids(user.id), getWatchlist(user.id)]);
 
@@ -18,7 +20,7 @@ export default async function DashboardPage() {
           <CardTitle>Welcome, {profile.display_name ?? "Bidder"}</CardTitle>
           <CardDescription>Your account status and recent activity on {APP_NAME}.</CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-3">
+        <CardContent className={`grid gap-4 ${buyerOnly ? "md:grid-cols-2" : "md:grid-cols-3"}`}>
           <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-800">
             <p className="text-xs uppercase tracking-wide text-slate-500">Approval status</p>
             <p className="mt-2 text-lg font-semibold capitalize">{profile.approval_status}</p>
@@ -26,11 +28,19 @@ export default async function DashboardPage() {
               <p className="mt-1 text-xs text-slate-500">Your account is pending manual verification by an admin.</p>
             ) : null}
           </div>
-          <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-800">
-            <p className="text-xs uppercase tracking-wide text-slate-500">Role group</p>
-            <p className="mt-2 text-lg font-semibold capitalize">{profile.role_group}</p>
-            <p className="mt-1 text-xs text-slate-500">User can buy only, marketer can buy and sell.</p>
-          </div>
+          {buyerOnly ? (
+            <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-800">
+              <p className="text-xs uppercase tracking-wide text-slate-500">Account type</p>
+              <p className="mt-2 text-lg font-semibold">Buyer</p>
+              <p className="mt-1 text-xs text-slate-500">Clean bidder workspace with auctions, bids, and watchlist.</p>
+            </div>
+          ) : (
+            <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-800">
+              <p className="text-xs uppercase tracking-wide text-slate-500">Role group</p>
+              <p className="mt-2 text-lg font-semibold capitalize">{profile.role_group}</p>
+              <p className="mt-1 text-xs text-slate-500">Marketers can buy and sell. Admins manage the platform.</p>
+            </div>
+          )}
           <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-800">
             <p className="text-xs uppercase tracking-wide text-slate-500">Role</p>
             <p className="mt-2 text-lg font-semibold">{profile.is_admin ? "Admin" : "User"}</p>

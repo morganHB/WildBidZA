@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { Radio } from "lucide-react";
+import { PlayCircle, Radio } from "lucide-react";
 import { subscribeToLivestreamSession } from "@/lib/auctions/realtime";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -104,7 +104,24 @@ export function AuctionLivestreamCard({
             ) : null}
           </>
         ) : !userId ? (
-          <p className="text-sm text-slate-500">Sign in to view the livestream.</p>
+          <>
+            <div className="relative w-full overflow-hidden rounded-2xl border border-brand-200/60 shadow-sm dark:border-brand-900/40">
+              <div className="absolute inset-0 bg-gradient-to-br from-emerald-100 via-slate-100 to-brand-100 dark:from-brand-950/50 dark:via-slate-900 dark:to-emerald-950/60" />
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_25%_25%,rgba(16,185,129,0.35),transparent_45%),radial-gradient(circle_at_75%_70%,rgba(14,165,233,0.25),transparent_50%)]" />
+              <div className="absolute inset-0 bg-slate-900/10 backdrop-blur-[1.5px] dark:bg-slate-950/35" />
+              <div className="relative flex aspect-video items-center justify-center">
+                <span className="inline-flex items-center gap-2 rounded-full bg-white/90 px-4 py-2 text-sm font-semibold text-slate-900 shadow-lg dark:bg-slate-900/90 dark:text-slate-100">
+                  <PlayCircle className="h-4 w-4 text-brand-600" />
+                  Live stream available
+                </span>
+                <span className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-full bg-rose-600/90 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-white">
+                  <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
+                  Live
+                </span>
+              </div>
+            </div>
+            <p className="text-sm text-slate-500">Sign in to view the livestream.</p>
+          </>
         ) : (
           <>
             {startTime ? (
@@ -112,6 +129,25 @@ export function AuctionLivestreamCard({
                 Started {new Date(startTime).toLocaleString("en-ZA", { timeZone: "Africa/Johannesburg" })}
               </p>
             ) : null}
+            <button
+              type="button"
+              onClick={() => setOpen(true)}
+              className="group relative w-full overflow-hidden rounded-2xl border border-brand-200/60 text-left shadow-sm transition hover:border-brand-300 dark:border-brand-900/40 dark:hover:border-brand-800/80"
+            >
+              <div className="absolute inset-0 bg-gradient-to-br from-emerald-100 via-slate-100 to-brand-100 dark:from-brand-950/50 dark:via-slate-900 dark:to-emerald-950/60" />
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_25%_25%,rgba(16,185,129,0.35),transparent_45%),radial-gradient(circle_at_75%_70%,rgba(14,165,233,0.25),transparent_50%)]" />
+              <div className="absolute inset-0 bg-slate-900/10 backdrop-blur-[1.5px] dark:bg-slate-950/35" />
+              <div className="relative flex aspect-video items-center justify-center">
+                <span className="inline-flex items-center gap-2 rounded-full bg-white/90 px-4 py-2 text-sm font-semibold text-slate-900 shadow-lg transition group-hover:scale-[1.02] dark:bg-slate-900/90 dark:text-slate-100">
+                  <PlayCircle className="h-4 w-4 text-brand-600" />
+                  Live stream available
+                </span>
+                <span className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-full bg-rose-600/90 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-white">
+                  <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
+                  Live
+                </span>
+              </div>
+            </button>
             <Button type="button" onClick={() => setOpen(true)}>
               View livestream
             </Button>

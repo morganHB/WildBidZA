@@ -44,7 +44,7 @@ export function PlaceBidForm({
   const [submitting, setSubmitting] = useState(false);
 
   const quickValues = useMemo(
-    () => [currentPrice + minIncrement, currentPrice + minIncrement * 2],
+    () => [currentPrice + minIncrement],
     [currentPrice, minIncrement],
   );
   const isPerHead = bidPricingMode === "per_head";
@@ -132,8 +132,8 @@ export function PlaceBidForm({
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
-        {quickValues.map((value, index) => (
+      <div className="grid grid-cols-1 gap-2">
+        {quickValues.map((value) => (
           <Button
             key={value}
             type="button"
@@ -141,7 +141,7 @@ export function PlaceBidForm({
             onClick={() => setAmount(value)}
             disabled={isBidDisabled}
           >
-            +{index + 1}x increment ({formatZar(value)})
+            +1x increment ({formatZar(value)})
           </Button>
         ))}
       </div>

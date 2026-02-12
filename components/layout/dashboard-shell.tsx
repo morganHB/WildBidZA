@@ -21,16 +21,25 @@ export async function DashboardShell({ children }: { children: React.ReactNode }
   const { data: profile } = await supabase.from("profiles").select("*").eq("id", user.id).single();
   const unreadCount = await getUnreadNotificationCount(user.id).catch(() => 0);
 
-  const baseItems = [
+  const buyerItems = [
     { href: "/dashboard", icon: LayoutDashboard, label: "Overview" },
     { href: "/my-bids", icon: Gavel, label: "My bids" },
-    { href: "/deals", icon: MessageSquareMore, label: "Deal chats" },
     { href: "/watchlist", icon: Heart, label: "Watchlist" },
     { href: "/settings", icon: CircleUserRound, label: "Settings" },
   ];
 
-  const sellerItems = [{ href: "/seller/listings", icon: List, label: "Seller listings" }];
+  const sellerItems = [
+    { href: "/deals", icon: MessageSquareMore, label: "Deal chats" },
+    { href: "/seller/listings", icon: List, label: "Seller listings" },
+  ];
   const adminItems = [{ href: "/admin", icon: Shield, label: "Admin" }];
+  const showSeller = isApprovedSeller(profile);
+  const showAdmin = isAdmin(profile);
+  const navItems = [
+    ...buyerItems,
+    ...(showSeller ? sellerItems : []),
+    ...(showAdmin ? adminItems : []),
+  ];
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-brand-50/60 via-white to-white dark:from-slate-950 dark:via-slate-950 dark:to-slate-900">
@@ -52,7 +61,7 @@ export async function DashboardShell({ children }: { children: React.ReactNode }
       </header>
       <div className="mx-auto grid w-full max-w-7xl gap-8 px-4 py-8 sm:px-6 lg:grid-cols-[240px_1fr] lg:px-8">
         <aside className="space-y-2 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950">
-          {[...baseItems, ...(isApprovedSeller(profile) ? sellerItems : []), ...(isAdmin(profile) ? adminItems : [])].map((item) => {
+          {navItems.map((item) => {
             const Icon = item.icon;
             return (
               <Button key={item.href} asChild variant="ghost" className="w-full justify-start">
