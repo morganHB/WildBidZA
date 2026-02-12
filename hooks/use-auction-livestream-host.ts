@@ -22,6 +22,23 @@ type LivestreamSession = {
   is_live: boolean;
 };
 
+function toUserErrorMessage(error: unknown, fallback: string) {
+  const message = error instanceof Error ? error.message : fallback;
+  if (/auth session missing|unauthorized/i.test(message)) {
+    return "Your session expired. Please sign in again.";
+  }
+  return message || fallback;
+}
+
+function stopLivestreamRequest(auctionId: string, keepalive = false) {
+  return fetch(`/api/seller/auctions/${auctionId}/livestream/stop`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+    keepalive,
+  });
+}
+
 async function postJson(url: string, body: Record<string, unknown>) {
   const response = await fetch(url, {
     method: "POST",
@@ -79,6 +96,7 @@ export function useAuctionLivestreamHost({
   const signalUnsubscribeRef = useRef<(() => void) | null>(null);
   const sessionPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const sessionRef = useRef<LivestreamSession | null>(null);
 
   const connectionHealth = useMemo(() => {
     if (!session) {
@@ -127,6 +145,10 @@ export function useAuctionLivestreamHost({
 
     setLocalStream(null);
   }, []);
+
+  useEffect(() => {
+    sessionRef.current = session;
+  }, [session]);
 
   useEffect(() => {
     if (!canHost) {
@@ -294,7 +316,7 @@ export function useAuctionLivestreamHost({
       cleanupConnections();
       setSession(null);
       setStatus("error");
-      setError(startError instanceof Error ? startError.message : "Failed to start livestream");
+      setError(toUserErrorMessage(startError, "Failed to start livestream"));
     }
   }, [auctionId, audioEnabled, canHost, cleanupConnections, qualityPreset, refreshViewerCount, selectedCameraId, status, stopTracks, userId]);
 
@@ -306,9 +328,13 @@ export function useAuctionLivestreamHost({
     setStatus("stopping");
 
     try {
-      await postJson(`/api/seller/auctions/${auctionId}/livestream/stop`, {});
+      const response = await stopLivestreamRequest(auctionId);
+      const payload = await response.json().catch(() => ({ ok: false, error: "Failed to stop livestream" }));
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error ?? "Failed to stop livestream");
+      }
     } catch (stopError) {
-      setError(stopError instanceof Error ? stopError.message : "Failed to stop livestream");
+      setError(toUserErrorMessage(stopError, "Failed to stop livestream"));
     } finally {
       cleanupConnections();
       stopTracks();
@@ -329,11 +355,32 @@ export function useAuctionLivestreamHost({
   }, []);
 
   useEffect(() => {
+    if (!session) {
+      return;
+    }
+
+    const stopIfLeaving = () => {
+      void stopLivestreamRequest(auctionId, true).catch(() => undefined);
+    };
+
+    window.addEventListener("pagehide", stopIfLeaving);
+    window.addEventListener("beforeunload", stopIfLeaving);
+
     return () => {
+      window.removeEventListener("pagehide", stopIfLeaving);
+      window.removeEventListener("beforeunload", stopIfLeaving);
+    };
+  }, [auctionId, session]);
+
+  useEffect(() => {
+    return () => {
+      if (sessionRef.current) {
+        void stopLivestreamRequest(auctionId, true).catch(() => undefined);
+      }
       cleanupConnections();
       stopTracks();
     };
-  }, [cleanupConnections, stopTracks]);
+  }, [auctionId, cleanupConnections, stopTracks]);
 
   return {
     status,

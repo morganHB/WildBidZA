@@ -22,6 +22,14 @@ type JoinResponse = {
   is_live: boolean;
 };
 
+function toUserErrorMessage(error: unknown, fallback: string) {
+  const message = error instanceof Error ? error.message : fallback;
+  if (/auth session missing|unauthorized/i.test(message)) {
+    return "Your session expired. Please sign in again.";
+  }
+  return message || fallback;
+}
+
 async function postJson(url: string, body: Record<string, unknown>) {
   const response = await fetch(url, {
     method: "POST",
@@ -54,15 +62,22 @@ export function useAuctionLivestreamViewer({
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const connectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const leaveSessionRef = useRef<string | null>(null);
   const hostUserRef = useRef<string | null>(null);
   const remoteStreamRef = useRef<MediaStream | null>(null);
   const subscribedSessionRef = useRef<(() => void) | null>(null);
+  const connectedRef = useRef(false);
 
   const cleanup = useCallback((sendLeave: boolean) => {
     if (heartbeatRef.current) {
       clearInterval(heartbeatRef.current);
       heartbeatRef.current = null;
+    }
+
+    if (connectTimeoutRef.current) {
+      clearTimeout(connectTimeoutRef.current);
+      connectTimeoutRef.current = null;
     }
 
     if (subscribedSessionRef.current) {
@@ -101,6 +116,7 @@ export function useAuctionLivestreamViewer({
 
     leaveSessionRef.current = null;
     hostUserRef.current = null;
+    connectedRef.current = false;
     setSessionId(null);
   }, [auctionId]);
 
@@ -133,6 +149,7 @@ export function useAuctionLivestreamViewer({
         hostUserRef.current = joined.host_user_id;
         setSessionId(joined.session_id);
         setViewerCount(joined.viewer_count ?? 0);
+        connectedRef.current = false;
 
         const pc = new RTCPeerConnection(LIVESTREAM_ICE_CONFIG);
         pcRef.current = pc;
@@ -149,6 +166,11 @@ export function useAuctionLivestreamViewer({
             }
             inboundStream.addTrack(track);
           });
+          connectedRef.current = true;
+          if (connectTimeoutRef.current) {
+            clearTimeout(connectTimeoutRef.current);
+            connectTimeoutRef.current = null;
+          }
           setRemoteStream(new MediaStream(inboundStream.getTracks()));
           setStatus("live");
         };
@@ -166,22 +188,6 @@ export function useAuctionLivestreamViewer({
           }).catch(() => undefined);
         };
 
-        const offer = await pc.createOffer({
-          offerToReceiveAudio: true,
-          offerToReceiveVideo: true,
-        });
-        await pc.setLocalDescription(offer);
-
-        await postJson(`/api/auctions/${auctionId}/livestream/signal`, {
-          session_id: joined.session_id,
-          to_user_id: joined.host_user_id,
-          signal_type: "offer",
-          payload: {
-            type: offer.type,
-            sdp: offer.sdp,
-          },
-        });
-
         const { unsubscribe } = subscribeToLivestreamSignals(
           joined.session_id,
           userId,
@@ -195,6 +201,10 @@ export function useAuctionLivestreamViewer({
                 const answer = toSessionDescription(signal.payload);
                 if (answer && !pcRef.current.currentRemoteDescription) {
                   await pcRef.current.setRemoteDescription(answer);
+                }
+                if (connectTimeoutRef.current) {
+                  clearTimeout(connectTimeoutRef.current);
+                  connectTimeoutRef.current = null;
                 }
                 return;
               }
@@ -218,6 +228,32 @@ export function useAuctionLivestreamViewer({
 
         subscribedSessionRef.current = unsubscribe;
 
+        const offer = await pc.createOffer({
+          offerToReceiveAudio: true,
+          offerToReceiveVideo: true,
+        });
+        await pc.setLocalDescription(offer);
+
+        await postJson(`/api/auctions/${auctionId}/livestream/signal`, {
+          session_id: joined.session_id,
+          to_user_id: joined.host_user_id,
+          signal_type: "offer",
+          payload: {
+            type: offer.type,
+            sdp: offer.sdp,
+          },
+        });
+
+        connectTimeoutRef.current = setTimeout(() => {
+          if (connectedRef.current) {
+            return;
+          }
+
+          setStatus("error");
+          setError("Could not connect to livestream. Ask the host to keep livestream controls open and restart stream.");
+          cleanup(false);
+        }, 25000);
+
         heartbeatRef.current = setInterval(() => {
           if (!leaveSessionRef.current) {
             return;
@@ -230,7 +266,7 @@ export function useAuctionLivestreamViewer({
       } catch (streamError) {
         if (!cancelled) {
           setStatus("error");
-          setError(streamError instanceof Error ? streamError.message : "Failed to connect to livestream");
+          setError(toUserErrorMessage(streamError, "Failed to connect to livestream"));
           cleanup(false);
         }
       }
