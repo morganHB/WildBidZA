@@ -1,5 +1,14 @@
 import Link from "next/link";
-import { CircleUserRound, Gavel, Heart, LayoutDashboard, List, MessageSquareMore, Shield } from "lucide-react";
+import {
+  CircleUserRound,
+  FileSpreadsheet,
+  Gavel,
+  Heart,
+  LayoutDashboard,
+  List,
+  MessageSquareMore,
+  Shield,
+} from "lucide-react";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { isAdmin, isApprovedSeller } from "@/lib/auth/roles";
 import { APP_NAME } from "@/lib/constants/app";
@@ -29,17 +38,24 @@ export async function DashboardShell({ children }: { children: React.ReactNode }
   ];
 
   const sellerItems = [
+    { href: "/reports", icon: FileSpreadsheet, label: "Reports" },
     { href: "/deals", icon: MessageSquareMore, label: "Deal chats" },
     { href: "/seller/listings", icon: List, label: "Seller listings" },
   ];
-  const adminItems = [{ href: "/admin", icon: Shield, label: "Admin" }];
+  const adminItems = [
+    { href: "/reports", icon: FileSpreadsheet, label: "Reports" },
+    { href: "/admin", icon: Shield, label: "Admin" },
+  ];
   const showSeller = isApprovedSeller(profile);
   const showAdmin = isAdmin(profile);
-  const navItems = [
+  const navItemsRaw = [
     ...buyerItems,
     ...(showSeller ? sellerItems : []),
     ...(showAdmin ? adminItems : []),
   ];
+  const navItems = navItemsRaw.filter(
+    (item, index, array) => array.findIndex((candidate) => candidate.href === item.href) === index,
+  );
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-brand-50/60 via-white to-white dark:from-slate-950 dark:via-slate-950 dark:to-slate-900">
