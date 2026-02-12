@@ -136,10 +136,15 @@ export function useAuctionLivestreamHost({
     const refreshDevices = async () => {
       try {
         const devices = await navigator.mediaDevices.enumerateDevices();
-        const cameras = devices.filter((device) => device.kind === "videoinput");
+        const cameras = devices.filter(
+          (device) => device.kind === "videoinput" && Boolean(device.deviceId),
+        );
         setAvailableCameras(cameras);
 
-        if (!selectedCameraId && cameras[0]?.deviceId) {
+        if (
+          (!selectedCameraId || selectedCameraId === "auto") &&
+          cameras[0]?.deviceId
+        ) {
           setSelectedCameraId(cameras[0].deviceId);
         }
       } catch {

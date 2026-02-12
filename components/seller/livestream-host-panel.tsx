@@ -90,11 +90,13 @@ export function LivestreamHostPanel({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="auto">Default camera</SelectItem>
-                {availableCameras.map((camera) => (
+                {availableCameras
+                  .filter((camera) => Boolean(camera.deviceId))
+                  .map((camera) => (
                   <SelectItem key={camera.deviceId} value={camera.deviceId}>
                     {camera.label || "Camera"}
                   </SelectItem>
-                ))}
+                  ))}
               </SelectContent>
             </Select>
           </div>
