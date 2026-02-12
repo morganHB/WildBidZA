@@ -72,6 +72,9 @@ export default async function AuctionDetailPage({ params }: { params: Promise<{ 
             userId={context.user?.id}
             hasActiveStream={Boolean(auction.active_livestream)}
             startedAt={auction.active_livestream?.started_at}
+            canHost={Boolean(auction.can_stream)}
+            isAuctionLive={auction.status === "live"}
+            hostControlHref={`/seller/listings/${auction.id}`}
           />
           <Tabs defaultValue="description" className="w-full">
             <TabsList>

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { Radio } from "lucide-react";
 import { subscribeToLivestreamSession } from "@/lib/auctions/realtime";
@@ -12,6 +13,9 @@ type AuctionLivestreamCardProps = {
   userId?: string;
   hasActiveStream: boolean;
   startedAt?: string;
+  canHost?: boolean;
+  isAuctionLive?: boolean;
+  hostControlHref?: string;
 };
 
 export function AuctionLivestreamCard({
@@ -19,6 +23,9 @@ export function AuctionLivestreamCard({
   userId,
   hasActiveStream,
   startedAt,
+  canHost = false,
+  isAuctionLive = false,
+  hostControlHref,
 }: AuctionLivestreamCardProps) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(hasActiveStream);
@@ -81,7 +88,21 @@ export function AuctionLivestreamCard({
       </CardHeader>
       <CardContent className="space-y-3">
         {!active ? (
-          <p className="text-sm text-slate-500">No livestream is active for this auction right now.</p>
+          <>
+            <p className="text-sm text-slate-500">No livestream is active for this auction right now.</p>
+            {userId && canHost && hostControlHref ? (
+              <>
+                <p className="text-xs text-slate-500">
+                  {isAuctionLive
+                    ? "You can start the stream from seller listing controls."
+                    : "Stream controls are available in seller listings and can start once this auction is live."}
+                </p>
+                <Button asChild variant="outline" type="button">
+                  <Link href={hostControlHref}>Open livestream controls</Link>
+                </Button>
+              </>
+            ) : null}
+          </>
         ) : !userId ? (
           <p className="text-sm text-slate-500">Sign in to view the livestream.</p>
         ) : (
