@@ -3,11 +3,12 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { ArrowUpRight, Clock3, MapPin, PlayCircle } from "lucide-react";
+import { ArrowUpRight, Clock3, MapPin, PlayCircle, Radio } from "lucide-react";
 import { formatAuctionDate, relativeFromNow } from "@/lib/utils/datetime";
 import { formatZar } from "@/lib/utils/currency";
 import { AuctionStatusBadge } from "@/components/auctions/status-badge";
 import { TrimmedVideo } from "@/components/auctions/trimmed-video";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 
@@ -18,6 +19,7 @@ export type AuctionCardData = {
   start_time: string;
   end_time: string;
   current_price: number;
+  has_active_stream?: boolean;
   bid_pricing_mode?: "lot_total" | "per_head";
   animal_count?: number;
   is_waiting_for_previous?: boolean;
@@ -107,8 +109,14 @@ export function AuctionCard({ auction }: { auction: AuctionCardData }) {
               <PlayCircle className="h-3 w-3" /> Video
             </div>
           ) : null}
-          <div className="absolute right-3 top-3">
+          <div className="absolute right-3 top-3 flex flex-col items-end gap-1">
             <AuctionStatusBadge status={auction.status} />
+            {auction.has_active_stream ? (
+              <Badge className="bg-emerald-600 text-white">
+                <Radio className="mr-1 h-3 w-3" />
+                STREAM LIVE
+              </Badge>
+            ) : null}
           </div>
         </div>
       </Link>

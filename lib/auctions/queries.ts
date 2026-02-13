@@ -1,4 +1,5 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import type { AuctionListFilter } from "@/types/app";
 import type { Database } from "@/types/db";
 
@@ -17,6 +18,7 @@ type AuctionSummary = AuctionRow & {
   }[];
   current_price: number;
   is_favorited: boolean;
+  has_active_stream: boolean;
 };
 
 function deriveStatus(row: AuctionRow, nowIso: string) {
@@ -151,6 +153,7 @@ export async function getAuctions(filters: AuctionListFilter, userId?: string | 
   const auctionIds = filteredByStatus.map((row) => row.id);
 
   const highestByAuction = new Map<string, number>();
+  const liveStreamAuctionIds = new Set<string>();
 
   if (auctionIds.length > 0) {
     const { data: bids, error: bidError } = await supabase
@@ -167,6 +170,28 @@ export async function getAuctions(filters: AuctionListFilter, userId?: string | 
       if (!highestByAuction.has(bid.auction_id)) {
         highestByAuction.set(bid.auction_id, bid.amount);
       }
+    }
+
+    try {
+      const streamClient = process.env.SUPABASE_SERVICE_ROLE_KEY
+        ? (createSupabaseAdminClient() as any)
+        : supabase;
+      const { data: activeStreams, error: streamError } = await streamClient
+        .from("auction_livestream_sessions")
+        .select("auction_id")
+        .in("auction_id", auctionIds)
+        .eq("is_live", true)
+        .is("ended_at", null);
+
+      if (streamError) {
+        throw streamError;
+      }
+
+      for (const stream of activeStreams ?? []) {
+        liveStreamAuctionIds.add(stream.auction_id);
+      }
+    } catch {
+      // Livestream badge is optional metadata for list cards; avoid failing page loads.
     }
   }
 
@@ -187,6 +212,7 @@ export async function getAuctions(filters: AuctionListFilter, userId?: string | 
     status: deriveStatus(row, nowIso),
     current_price: highestByAuction.get(row.id) ?? row.starting_bid,
     is_favorited: favorites.has(row.id),
+    has_active_stream: liveStreamAuctionIds.has(row.id),
     images: [...(row.images ?? [])].sort((a, b) => a.sort_order - b.sort_order),
     videos: [...(row.videos ?? [])].sort((a, b) => a.sort_order - b.sort_order),
   })) satisfies AuctionSummary[];
