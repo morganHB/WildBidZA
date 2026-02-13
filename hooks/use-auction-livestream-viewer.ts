@@ -206,12 +206,15 @@ export function useAuctionLivestreamViewer({
             || pc.iceConnectionState === "connected"
             || pc.iceConnectionState === "completed"
           ) {
-            connectedRef.current = true;
-            if (connectTimeoutRef.current) {
-              clearTimeout(connectTimeoutRef.current);
-              connectTimeoutRef.current = null;
+            // Wait for an actual media track before considering the stream connected.
+            if ((remoteStreamRef.current?.getTracks().length ?? 0) > 0) {
+              connectedRef.current = true;
+              if (connectTimeoutRef.current) {
+                clearTimeout(connectTimeoutRef.current);
+                connectTimeoutRef.current = null;
+              }
+              setStatus("live");
             }
-            setStatus("live");
             return;
           }
 
@@ -245,10 +248,6 @@ export function useAuctionLivestreamViewer({
                       await pcRef.current.addIceCandidate(candidate).catch(() => undefined);
                     }
                   }
-                }
-                if (connectTimeoutRef.current) {
-                  clearTimeout(connectTimeoutRef.current);
-                  connectTimeoutRef.current = null;
                 }
                 return;
               }
@@ -298,9 +297,11 @@ export function useAuctionLivestreamViewer({
           }
 
           setStatus("error");
-          setError("Could not connect to livestream. Ask the host to keep livestream controls open and restart stream.");
+          setError(
+            "Could not connect to livestream. Ask the host to restart stream. If this keeps happening, network may require TURN relay configuration.",
+          );
           cleanup(false);
-        }, 25000);
+        }, 40000);
 
         heartbeatRef.current = setInterval(() => {
           if (!leaveSessionRef.current) {

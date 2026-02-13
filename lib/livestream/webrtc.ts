@@ -1,10 +1,35 @@
 export type LivestreamQualityPreset = "standard" | "data_saver";
 
-export const LIVESTREAM_ICE_CONFIG: RTCConfiguration = {
-  iceServers: [
+function splitCsvUrls(value: string | undefined) {
+  return (value ?? "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+}
+
+function buildIceServers(): RTCIceServer[] {
+  const servers: RTCIceServer[] = [
     { urls: "stun:stun.l.google.com:19302" },
     { urls: "stun:stun1.l.google.com:19302" },
-  ],
+  ];
+
+  const turnUrls = splitCsvUrls(process.env.NEXT_PUBLIC_LIVESTREAM_TURN_URLS);
+  const turnUsername = process.env.NEXT_PUBLIC_LIVESTREAM_TURN_USERNAME?.trim();
+  const turnCredential = process.env.NEXT_PUBLIC_LIVESTREAM_TURN_CREDENTIAL?.trim();
+
+  if (turnUrls.length > 0 && turnUsername && turnCredential) {
+    servers.push({
+      urls: turnUrls,
+      username: turnUsername,
+      credential: turnCredential,
+    });
+  }
+
+  return servers;
+}
+
+export const LIVESTREAM_ICE_CONFIG: RTCConfiguration = {
+  iceServers: buildIceServers(),
 };
 
 export function getVideoConstraints(
