@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { subscribeToLivestreamSignals } from "@/lib/auctions/realtime";
 import {
   LIVESTREAM_ICE_CONFIG,
   toIceCandidate,
@@ -22,10 +21,45 @@ type JoinResponse = {
   is_live: boolean;
 };
 
+type LivestreamSignal = {
+  id: string;
+  session_id: string;
+  from_user_id: string;
+  to_user_id: string;
+  signal_type: "offer" | "answer" | "ice_candidate" | "leave";
+  payload: unknown;
+  created_at: string;
+};
+
+const GUEST_PARTICIPANT_KEY = "wildbid_guest_livestream_participant_id";
+const SIGNAL_POLL_INTERVAL_MS = 800;
+
+function isUuid(value: string | null | undefined) {
+  if (!value) {
+    return false;
+  }
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function getGuestParticipantId() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const existing = window.localStorage.getItem(GUEST_PARTICIPANT_KEY);
+  if (isUuid(existing)) {
+    return existing;
+  }
+
+  const nextId = crypto.randomUUID();
+  window.localStorage.setItem(GUEST_PARTICIPANT_KEY, nextId);
+  return nextId;
+}
+
 function toUserErrorMessage(error: unknown, fallback: string) {
   const message = error instanceof Error ? error.message : fallback;
   if (/auth session missing|unauthorized/i.test(message)) {
-    return "Your session expired. Please sign in again.";
+    return "Unable to authenticate this stream request.";
   }
   return message || fallback;
 }
@@ -45,13 +79,33 @@ async function postJson(url: string, body: Record<string, unknown>) {
   return payload;
 }
 
+async function fetchSignals(params: {
+  auctionId: string;
+  sessionId: string;
+  participantId: string;
+  since: string;
+}) {
+  const url = new URL(`/api/auctions/${params.auctionId}/livestream/signal`, window.location.origin);
+  url.searchParams.set("session_id", params.sessionId);
+  url.searchParams.set("participant_id", params.participantId);
+  url.searchParams.set("since", params.since);
+
+  const response = await fetch(url.toString(), { cache: "no-store" });
+  const payload = await response.json().catch(() => ({ ok: false, error: "Request failed" }));
+  if (!response.ok || !payload.ok) {
+    throw new Error(payload.error ?? "Failed to fetch livestream signals");
+  }
+
+  return (payload.data?.items ?? []) as LivestreamSignal[];
+}
+
 export function useAuctionLivestreamViewer({
   auctionId,
   userId,
   enabled,
 }: {
   auctionId: string;
-  userId: string;
+  userId?: string;
   enabled: boolean;
 }) {
   const [status, setStatus] = useState<ViewerStatus>("idle");
@@ -59,16 +113,28 @@ export function useAuctionLivestreamViewer({
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [viewerCount, setViewerCount] = useState(0);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [participantId, setParticipantId] = useState<string | null>(userId ?? null);
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const signalPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const connectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const leaveSessionRef = useRef<string | null>(null);
   const hostUserRef = useRef<string | null>(null);
   const remoteStreamRef = useRef<MediaStream | null>(null);
   const pendingIceCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
-  const subscribedSessionRef = useRef<(() => void) | null>(null);
   const connectedRef = useRef(false);
+  const sinceRef = useRef(new Date(Date.now() - 5000).toISOString());
+  const pollingRef = useRef(false);
+
+  useEffect(() => {
+    if (userId && isUuid(userId)) {
+      setParticipantId(userId);
+      return;
+    }
+
+    setParticipantId(getGuestParticipantId());
+  }, [userId]);
 
   const cleanup = useCallback((sendLeave: boolean) => {
     if (heartbeatRef.current) {
@@ -76,14 +142,14 @@ export function useAuctionLivestreamViewer({
       heartbeatRef.current = null;
     }
 
+    if (signalPollRef.current) {
+      clearInterval(signalPollRef.current);
+      signalPollRef.current = null;
+    }
+
     if (connectTimeoutRef.current) {
       clearTimeout(connectTimeoutRef.current);
       connectTimeoutRef.current = null;
-    }
-
-    if (subscribedSessionRef.current) {
-      subscribedSessionRef.current();
-      subscribedSessionRef.current = null;
     }
 
     if (pcRef.current) {
@@ -101,11 +167,12 @@ export function useAuctionLivestreamViewer({
 
     setRemoteStream(null);
 
-    if (sendLeave && leaveSessionRef.current) {
+    if (sendLeave && leaveSessionRef.current && participantId) {
       const leavingSession = leaveSessionRef.current;
       if (hostUserRef.current) {
         void postJson(`/api/auctions/${auctionId}/livestream/signal`, {
           session_id: leavingSession,
+          participant_id: participantId,
           to_user_id: hostUserRef.current,
           signal_type: "leave",
           payload: {},
@@ -113,6 +180,7 @@ export function useAuctionLivestreamViewer({
       }
       void postJson(`/api/auctions/${auctionId}/livestream/leave`, {
         session_id: leavingSession,
+        participant_id: participantId,
       }).catch(() => undefined);
     }
 
@@ -120,11 +188,13 @@ export function useAuctionLivestreamViewer({
     hostUserRef.current = null;
     pendingIceCandidatesRef.current = [];
     connectedRef.current = false;
+    sinceRef.current = new Date(Date.now() - 5000).toISOString();
+    pollingRef.current = false;
     setSessionId(null);
-  }, [auctionId]);
+  }, [auctionId, participantId]);
 
   useEffect(() => {
-    if (!enabled || !auctionId || !userId) {
+    if (!enabled || !auctionId || !participantId) {
       cleanup(true);
       setStatus("idle");
       setError(null);
@@ -133,12 +203,84 @@ export function useAuctionLivestreamViewer({
 
     let cancelled = false;
 
+    const processSignals = async (signals: LivestreamSignal[]) => {
+      if (!pcRef.current) {
+        return;
+      }
+
+      for (const signal of signals) {
+        if (!pcRef.current) {
+          return;
+        }
+
+        if (signal.signal_type === "answer") {
+          const answer = toSessionDescription(signal.payload);
+          if (answer && !pcRef.current.currentRemoteDescription) {
+            await pcRef.current.setRemoteDescription(answer);
+            if (pendingIceCandidatesRef.current.length > 0) {
+              const queued = [...pendingIceCandidatesRef.current];
+              pendingIceCandidatesRef.current = [];
+              for (const candidate of queued) {
+                await pcRef.current.addIceCandidate(candidate).catch(() => undefined);
+              }
+            }
+          }
+          continue;
+        }
+
+        if (signal.signal_type === "ice_candidate") {
+          const candidate = toIceCandidate(signal.payload);
+          if (candidate) {
+            if (pcRef.current.currentRemoteDescription) {
+              await pcRef.current.addIceCandidate(candidate).catch(() => undefined);
+            } else {
+              pendingIceCandidatesRef.current.push(candidate);
+            }
+          }
+          continue;
+        }
+
+        if (signal.signal_type === "leave") {
+          setStatus("ended");
+          setError("Livestream ended by host");
+          cleanup(false);
+        }
+      }
+    };
+
+    const pollSignals = async () => {
+      if (pollingRef.current || !leaveSessionRef.current || !participantId) {
+        return;
+      }
+
+      pollingRef.current = true;
+      try {
+        const signals = await fetchSignals({
+          auctionId,
+          sessionId: leaveSessionRef.current,
+          participantId,
+          since: sinceRef.current,
+        });
+
+        if (signals.length > 0) {
+          sinceRef.current = signals[signals.length - 1]?.created_at ?? sinceRef.current;
+          await processSignals(signals);
+        }
+      } catch {
+        // Ignore transient polling failures.
+      } finally {
+        pollingRef.current = false;
+      }
+    };
+
     const boot = async () => {
       try {
         setStatus("connecting");
         setError(null);
 
-        const joinPayload = (await postJson(`/api/auctions/${auctionId}/livestream`, {})) as {
+        const joinPayload = (await postJson(`/api/auctions/${auctionId}/livestream`, {
+          participant_id: participantId,
+        })) as {
           ok: true;
           data: JoinResponse;
         };
@@ -153,12 +295,12 @@ export function useAuctionLivestreamViewer({
         setSessionId(joined.session_id);
         setViewerCount(joined.viewer_count ?? 0);
         connectedRef.current = false;
+        sinceRef.current = new Date(Date.now() - 5000).toISOString();
 
         const pc = new RTCPeerConnection(LIVESTREAM_ICE_CONFIG);
         pcRef.current = pc;
         pendingIceCandidatesRef.current = [];
 
-        // Explicit recv-only transceivers improve browser interoperability for viewer-only peers.
         pc.addTransceiver("video", { direction: "recvonly" });
         pc.addTransceiver("audio", { direction: "recvonly" });
 
@@ -184,13 +326,14 @@ export function useAuctionLivestreamViewer({
         };
 
         pc.onicecandidate = (event) => {
-          if (!event.candidate) {
+          if (!event.candidate || !leaveSessionRef.current || !hostUserRef.current) {
             return;
           }
 
           void postJson(`/api/auctions/${auctionId}/livestream/signal`, {
-            session_id: joined.session_id,
-            to_user_id: joined.host_user_id,
+            session_id: leaveSessionRef.current,
+            participant_id: participantId,
+            to_user_id: hostUserRef.current,
             signal_type: "ice_candidate",
             payload: event.candidate.toJSON(),
           }).catch(() => undefined);
@@ -206,7 +349,6 @@ export function useAuctionLivestreamViewer({
             || pc.iceConnectionState === "connected"
             || pc.iceConnectionState === "completed"
           ) {
-            // Wait for an actual media track before considering the stream connected.
             if ((remoteStreamRef.current?.getTracks().length ?? 0) > 0) {
               connectedRef.current = true;
               if (connectTimeoutRef.current) {
@@ -218,62 +360,12 @@ export function useAuctionLivestreamViewer({
             return;
           }
 
-          if (
-            !connectedRef.current
-            && (pc.connectionState === "failed" || pc.connectionState === "closed")
-          ) {
+          if (!connectedRef.current && (pc.connectionState === "failed" || pc.connectionState === "closed")) {
             setStatus("error");
             setError("Unable to establish livestream connection. Ask the host to restart the stream.");
             cleanup(false);
           }
         };
-
-        const { unsubscribe } = subscribeToLivestreamSignals(
-          joined.session_id,
-          userId,
-          (signal) => {
-            void (async () => {
-              if (!pcRef.current) {
-                return;
-              }
-
-              if (signal.signal_type === "answer") {
-                const answer = toSessionDescription(signal.payload);
-                if (answer && !pcRef.current.currentRemoteDescription) {
-                  await pcRef.current.setRemoteDescription(answer);
-                  if (pendingIceCandidatesRef.current.length > 0) {
-                    const queued = [...pendingIceCandidatesRef.current];
-                    pendingIceCandidatesRef.current = [];
-                    for (const candidate of queued) {
-                      await pcRef.current.addIceCandidate(candidate).catch(() => undefined);
-                    }
-                  }
-                }
-                return;
-              }
-
-              if (signal.signal_type === "ice_candidate") {
-                const candidate = toIceCandidate(signal.payload);
-                if (candidate) {
-                  if (pcRef.current.currentRemoteDescription) {
-                    await pcRef.current.addIceCandidate(candidate).catch(() => undefined);
-                  } else {
-                    pendingIceCandidatesRef.current.push(candidate);
-                  }
-                }
-                return;
-              }
-
-              if (signal.signal_type === "leave") {
-                setStatus("ended");
-                setError("Livestream ended by host");
-                cleanup(false);
-              }
-            })();
-          },
-        );
-
-        subscribedSessionRef.current = unsubscribe;
 
         const offer = await pc.createOffer({
           offerToReceiveAudio: true,
@@ -283,6 +375,7 @@ export function useAuctionLivestreamViewer({
 
         await postJson(`/api/auctions/${auctionId}/livestream/signal`, {
           session_id: joined.session_id,
+          participant_id: participantId,
           to_user_id: joined.host_user_id,
           signal_type: "offer",
           payload: {
@@ -291,15 +384,18 @@ export function useAuctionLivestreamViewer({
           },
         });
 
+        signalPollRef.current = setInterval(() => {
+          void pollSignals();
+        }, SIGNAL_POLL_INTERVAL_MS);
+        void pollSignals();
+
         connectTimeoutRef.current = setTimeout(() => {
           if (connectedRef.current) {
             return;
           }
 
           setStatus("error");
-          setError(
-            "Could not connect to livestream. Ask the host to restart stream. If this keeps happening, network may require TURN relay configuration.",
-          );
+          setError("Could not connect to livestream. Ask the host to restart stream.");
           cleanup(false);
         }, 40000);
 
@@ -310,6 +406,7 @@ export function useAuctionLivestreamViewer({
 
           void postJson(`/api/auctions/${auctionId}/livestream/heartbeat`, {
             session_id: leaveSessionRef.current,
+            participant_id: participantId,
           }).catch(() => undefined);
         }, 15000);
       } catch (streamError) {
@@ -327,7 +424,7 @@ export function useAuctionLivestreamViewer({
       cancelled = true;
       cleanup(true);
     };
-  }, [auctionId, cleanup, enabled, userId]);
+  }, [auctionId, cleanup, enabled, participantId]);
 
   return {
     status,

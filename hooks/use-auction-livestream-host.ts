@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { subscribeToLivestreamSignals } from "@/lib/auctions/realtime";
 import {
   getVideoConstraints,
   LIVESTREAM_ICE_CONFIG,
@@ -21,6 +20,18 @@ type LivestreamSession = {
   started_at: string;
   is_live: boolean;
 };
+
+type LivestreamSignal = {
+  id: string;
+  session_id: string;
+  from_user_id: string;
+  to_user_id: string;
+  signal_type: "offer" | "answer" | "ice_candidate" | "leave";
+  payload: unknown;
+  created_at: string;
+};
+
+const SIGNAL_POLL_INTERVAL_MS = 800;
 
 function toUserErrorMessage(error: unknown, fallback: string) {
   const message = error instanceof Error ? error.message : fallback;
@@ -73,6 +84,26 @@ async function fetchLivestreamState(auctionId: string) {
   };
 }
 
+async function fetchSignals(params: {
+  auctionId: string;
+  sessionId: string;
+  participantId: string;
+  since: string;
+}) {
+  const url = new URL(`/api/auctions/${params.auctionId}/livestream/signal`, window.location.origin);
+  url.searchParams.set("session_id", params.sessionId);
+  url.searchParams.set("participant_id", params.participantId);
+  url.searchParams.set("since", params.since);
+
+  const response = await fetch(url.toString(), { cache: "no-store" });
+  const payload = await response.json().catch(() => ({ ok: false, error: "Request failed" }));
+  if (!response.ok || !payload.ok) {
+    throw new Error(payload.error ?? "Failed to fetch livestream signals");
+  }
+
+  return (payload.data?.items ?? []) as LivestreamSignal[];
+}
+
 export function useAuctionLivestreamHost({
   auctionId,
   userId,
@@ -93,11 +124,13 @@ export function useAuctionLivestreamHost({
   const [selectedCameraId, setSelectedCameraId] = useState<string>("");
 
   const peersRef = useRef<Map<string, RTCPeerConnection>>(new Map());
-  const signalUnsubscribeRef = useRef<(() => void) | null>(null);
   const sessionPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const signalPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const sessionRef = useRef<LivestreamSession | null>(null);
   const pendingIceCandidatesRef = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
+  const sinceRef = useRef(new Date(Date.now() - 5000).toISOString());
+  const signalPollingRef = useRef(false);
 
   const connectionHealth = useMemo(() => {
     if (!session) {
@@ -120,9 +153,9 @@ export function useAuctionLivestreamHost({
   }, [session]);
 
   const cleanupConnections = useCallback(() => {
-    if (signalUnsubscribeRef.current) {
-      signalUnsubscribeRef.current();
-      signalUnsubscribeRef.current = null;
+    if (signalPollRef.current) {
+      clearInterval(signalPollRef.current);
+      signalPollRef.current = null;
     }
 
     if (sessionPollRef.current) {
@@ -137,6 +170,8 @@ export function useAuctionLivestreamHost({
     });
     peersRef.current.clear();
     pendingIceCandidatesRef.current.clear();
+    signalPollingRef.current = false;
+    sinceRef.current = new Date(Date.now() - 5000).toISOString();
   }, []);
 
   const stopTracks = useCallback(() => {
@@ -166,8 +201,8 @@ export function useAuctionLivestreamHost({
         setAvailableCameras(cameras);
 
         if (
-          (!selectedCameraId || selectedCameraId === "auto") &&
-          cameras[0]?.deviceId
+          (!selectedCameraId || selectedCameraId === "auto")
+          && cameras[0]?.deviceId
         ) {
           setSelectedCameraId(cameras[0].deviceId);
         }
@@ -188,9 +223,143 @@ export function useAuctionLivestreamHost({
         setViewerCount(0);
       }
     } catch {
-      // Ignore transient refresh failures
+      // Ignore transient refresh failures.
     }
   }, [auctionId]);
+
+  const processSignal = useCallback(async (liveSession: LivestreamSession, signal: LivestreamSignal) => {
+    if (!streamRef.current) {
+      return;
+    }
+
+    if (signal.signal_type === "leave") {
+      const leavingViewerId = signal.from_user_id;
+      const peer = peersRef.current.get(leavingViewerId);
+      if (peer) {
+        peer.close();
+        peersRef.current.delete(leavingViewerId);
+      }
+      pendingIceCandidatesRef.current.delete(leavingViewerId);
+      return;
+    }
+
+    const viewerId = signal.from_user_id;
+    let peer = peersRef.current.get(viewerId);
+
+    if (!peer) {
+      peer = new RTCPeerConnection(LIVESTREAM_ICE_CONFIG);
+      streamRef.current.getTracks().forEach((track) => {
+        peer?.addTrack(track, streamRef.current as MediaStream);
+      });
+
+      peer.onicecandidate = (event) => {
+        if (!event.candidate) {
+          return;
+        }
+
+        void postJson(`/api/auctions/${auctionId}/livestream/signal`, {
+          session_id: liveSession.session_id,
+          participant_id: userId,
+          to_user_id: viewerId,
+          signal_type: "ice_candidate",
+          payload: event.candidate.toJSON(),
+        }).catch(() => undefined);
+      };
+
+      peer.onconnectionstatechange = () => {
+        if (!peer) {
+          return;
+        }
+
+        if (peer.connectionState === "failed" || peer.connectionState === "closed") {
+          peersRef.current.delete(viewerId);
+          pendingIceCandidatesRef.current.delete(viewerId);
+        }
+      };
+
+      peersRef.current.set(viewerId, peer);
+    }
+
+    if (signal.signal_type === "offer") {
+      const offer = toSessionDescription(signal.payload);
+      if (!offer) {
+        return;
+      }
+
+      await peer.setRemoteDescription(offer);
+      const queued = pendingIceCandidatesRef.current.get(viewerId) ?? [];
+      if (queued.length > 0) {
+        pendingIceCandidatesRef.current.delete(viewerId);
+        for (const queuedCandidate of queued) {
+          await peer.addIceCandidate(queuedCandidate).catch(() => undefined);
+        }
+      }
+      const answer = await peer.createAnswer();
+      await peer.setLocalDescription(answer);
+
+      await postJson(`/api/auctions/${auctionId}/livestream/signal`, {
+        session_id: liveSession.session_id,
+        participant_id: userId,
+        to_user_id: viewerId,
+        signal_type: "answer",
+        payload: {
+          type: answer.type,
+          sdp: answer.sdp,
+        },
+      });
+      return;
+    }
+
+    if (signal.signal_type === "ice_candidate") {
+      const candidate = toIceCandidate(signal.payload);
+      if (candidate) {
+        if (peer.currentRemoteDescription) {
+          await peer.addIceCandidate(candidate).catch(() => undefined);
+        } else {
+          const queued = pendingIceCandidatesRef.current.get(viewerId) ?? [];
+          queued.push(candidate);
+          pendingIceCandidatesRef.current.set(viewerId, queued);
+        }
+      }
+    }
+  }, [auctionId, userId]);
+
+  const startSignalPolling = useCallback((liveSession: LivestreamSession) => {
+    const poll = async () => {
+      if (signalPollingRef.current) {
+        return;
+      }
+
+      signalPollingRef.current = true;
+      try {
+        const signals = await fetchSignals({
+          auctionId,
+          sessionId: liveSession.session_id,
+          participantId: userId,
+          since: sinceRef.current,
+        });
+
+        if (signals.length > 0) {
+          sinceRef.current = signals[signals.length - 1]?.created_at ?? sinceRef.current;
+          for (const signal of signals) {
+            await processSignal(liveSession, signal);
+          }
+        }
+      } catch {
+        // Ignore transient signal polling failures.
+      } finally {
+        signalPollingRef.current = false;
+      }
+    };
+
+    if (signalPollRef.current) {
+      clearInterval(signalPollRef.current);
+    }
+    signalPollRef.current = setInterval(() => {
+      void poll();
+    }, SIGNAL_POLL_INTERVAL_MS);
+    void poll();
+  }, [auctionId, processSignal, userId]);
 
   const start = useCallback(async () => {
     if (!canHost || status === "live" || status === "starting") {
@@ -220,109 +389,10 @@ export function useAuctionLivestreamHost({
       const liveSession = payload.data;
       setSession(liveSession);
       setStatus("live");
+      sinceRef.current = new Date(Date.now() - 5000).toISOString();
 
-      const { unsubscribe } = subscribeToLivestreamSignals(
-        liveSession.session_id,
-        userId,
-        (signal) => {
-          void (async () => {
-            if (!streamRef.current) {
-              return;
-            }
+      startSignalPolling(liveSession);
 
-            if (signal.signal_type === "leave") {
-              const leavingViewerId = signal.from_user_id;
-              const peer = peersRef.current.get(leavingViewerId);
-              if (peer) {
-                peer.close();
-                peersRef.current.delete(leavingViewerId);
-              }
-              pendingIceCandidatesRef.current.delete(leavingViewerId);
-              return;
-            }
-
-            const viewerId = signal.from_user_id;
-            let peer = peersRef.current.get(viewerId);
-
-            if (!peer) {
-              peer = new RTCPeerConnection(LIVESTREAM_ICE_CONFIG);
-              streamRef.current.getTracks().forEach((track) => {
-                peer?.addTrack(track, streamRef.current as MediaStream);
-              });
-
-              peer.onicecandidate = (event) => {
-                if (!event.candidate) {
-                  return;
-                }
-
-                void postJson(`/api/auctions/${auctionId}/livestream/signal`, {
-                  session_id: liveSession.session_id,
-                  to_user_id: viewerId,
-                  signal_type: "ice_candidate",
-                  payload: event.candidate.toJSON(),
-                }).catch(() => undefined);
-              };
-
-              peer.onconnectionstatechange = () => {
-                if (!peer) {
-                  return;
-                }
-
-                if (peer.connectionState === "failed" || peer.connectionState === "closed") {
-                  peersRef.current.delete(viewerId);
-                  pendingIceCandidatesRef.current.delete(viewerId);
-                }
-              };
-
-              peersRef.current.set(viewerId, peer);
-            }
-
-            if (signal.signal_type === "offer") {
-              const offer = toSessionDescription(signal.payload);
-              if (!offer) {
-                return;
-              }
-
-              await peer.setRemoteDescription(offer);
-              const queued = pendingIceCandidatesRef.current.get(viewerId) ?? [];
-              if (queued.length > 0) {
-                pendingIceCandidatesRef.current.delete(viewerId);
-                for (const queuedCandidate of queued) {
-                  await peer.addIceCandidate(queuedCandidate).catch(() => undefined);
-                }
-              }
-              const answer = await peer.createAnswer();
-              await peer.setLocalDescription(answer);
-
-              await postJson(`/api/auctions/${auctionId}/livestream/signal`, {
-                session_id: liveSession.session_id,
-                to_user_id: viewerId,
-                signal_type: "answer",
-                payload: {
-                  type: answer.type,
-                  sdp: answer.sdp,
-                },
-              });
-              return;
-            }
-
-            if (signal.signal_type === "ice_candidate") {
-              const candidate = toIceCandidate(signal.payload);
-              if (candidate) {
-                if (peer.currentRemoteDescription) {
-                  await peer.addIceCandidate(candidate).catch(() => undefined);
-                } else {
-                  const queued = pendingIceCandidatesRef.current.get(viewerId) ?? [];
-                  queued.push(candidate);
-                  pendingIceCandidatesRef.current.set(viewerId, queued);
-                }
-              }
-            }
-          })();
-        },
-      );
-
-      signalUnsubscribeRef.current = unsubscribe;
       sessionPollRef.current = setInterval(() => {
         void refreshViewerCount();
       }, 10000);
@@ -335,7 +405,18 @@ export function useAuctionLivestreamHost({
       setStatus("error");
       setError(toUserErrorMessage(startError, "Failed to start livestream"));
     }
-  }, [auctionId, audioEnabled, canHost, cleanupConnections, qualityPreset, refreshViewerCount, selectedCameraId, status, stopTracks, userId]);
+  }, [
+    auctionId,
+    audioEnabled,
+    canHost,
+    cleanupConnections,
+    qualityPreset,
+    refreshViewerCount,
+    selectedCameraId,
+    startSignalPolling,
+    status,
+    stopTracks,
+  ]);
 
   const stop = useCallback(async () => {
     if (!session || status === "stopping") {

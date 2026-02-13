@@ -7,11 +7,13 @@ export const startLivestreamSchema = z.object({
 
 export const livestreamSessionSchema = z.object({
   session_id: z.string().uuid(),
+  participant_id: z.string().uuid().optional(),
 });
 
 export const livestreamSignalSchema = z.object({
   session_id: z.string().uuid(),
   to_user_id: z.string().uuid(),
+  participant_id: z.string().uuid().optional(),
   signal_type: z.enum(["offer", "answer", "ice_candidate", "leave"]),
   payload: z.unknown().optional().default({}),
 });

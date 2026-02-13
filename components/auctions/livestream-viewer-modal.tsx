@@ -1,21 +1,19 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { LoaderCircle } from "lucide-react";
 import { useAuctionLivestreamViewer } from "@/hooks/use-auction-livestream-viewer";
-import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 type ViewerModalProps = {
   auctionId: string;
-  userId: string;
+  userId?: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 };
 
 export function LivestreamViewerModal({ auctionId, userId, open, onOpenChange }: ViewerModalProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const [playbackBlocked, setPlaybackBlocked] = useState(false);
   const { status, error, remoteStream, viewerCount } = useAuctionLivestreamViewer({
     auctionId,
     userId,
@@ -28,30 +26,13 @@ export function LivestreamViewerModal({ auctionId, userId, open, onOpenChange }:
     }
 
     videoRef.current.srcObject = remoteStream;
-    setPlaybackBlocked(false);
 
     if (!remoteStream) {
       return;
     }
 
-    void videoRef.current.play().catch(() => {
-      // Browser autoplay restrictions can block unmuted remote playback.
-      setPlaybackBlocked(true);
-    });
+    void videoRef.current.play().catch(() => undefined);
   }, [remoteStream]);
-
-  const startPlayback = async () => {
-    if (!videoRef.current) {
-      return;
-    }
-
-    try {
-      await videoRef.current.play();
-      setPlaybackBlocked(false);
-    } catch {
-      setPlaybackBlocked(true);
-    }
-  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -69,14 +50,6 @@ export function LivestreamViewerModal({ auctionId, userId, open, onOpenChange }:
               <div className="flex items-center gap-2 rounded-full bg-white px-3 py-2 text-sm font-medium text-slate-900">
                 <LoaderCircle className="h-4 w-4 animate-spin" /> Connecting livestream...
               </div>
-            </div>
-          ) : null}
-
-          {status === "live" && playbackBlocked ? (
-            <div className="absolute inset-0 flex items-center justify-center bg-black/65">
-              <Button type="button" variant="secondary" onClick={() => void startPlayback()}>
-                Start video playback
-              </Button>
             </div>
           ) : null}
         </div>
