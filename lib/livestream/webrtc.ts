@@ -23,7 +23,22 @@ function buildIceServers(): RTCIceServer[] {
       username: turnUsername,
       credential: turnCredential,
     });
+    return servers;
   }
+
+  // Fallback public TURN relay for v1 reliability when no project TURN env is configured.
+  // For production scale and privacy, configure your own TURN via NEXT_PUBLIC_LIVESTREAM_TURN_* env vars.
+  servers.push({
+    urls: [
+      "stun:openrelay.metered.ca:80",
+      "turn:openrelay.metered.ca:80",
+      "turn:openrelay.metered.ca:80?transport=tcp",
+      "turn:openrelay.metered.ca:443",
+      "turns:openrelay.metered.ca:443?transport=tcp",
+    ],
+    username: "openrelayproject",
+    credential: "openrelayproject",
+  });
 
   return servers;
 }

@@ -85,6 +85,7 @@ NEXT_PUBLIC_LIVESTREAM_TURN_CREDENTIAL=
 ```
 
 `NEXT_PUBLIC_LIVESTREAM_TURN_*` values are optional but recommended for reliable cross-network livestream connectivity.
+If not configured, the app now uses a public fallback TURN relay for better default connectivity.
 
 ## Local Setup
 
