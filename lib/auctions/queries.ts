@@ -235,6 +235,7 @@ export async function getAuctionById(auctionId: string, userId?: string | null) 
   let isFavorited = false;
   let canManage = false;
   let canStream = false;
+  let myAutoBidMax: number | null = null;
   let activeLivestream: {
     id: string;
     auction_id: string;
@@ -262,6 +263,7 @@ export async function getAuctionById(auctionId: string, userId?: string | null) 
       { data: canManageData, error: canManageError },
       { data: canStreamData, error: canStreamError },
       { data: liveSession, error: liveSessionError },
+      { data: autoBidRow, error: autoBidError },
     ] = await Promise.all([
       supabase.rpc("can_manage_auction", {
         p_auction_id: auctionId,
@@ -280,6 +282,13 @@ export async function getAuctionById(auctionId: string, userId?: string | null) 
         .order("started_at", { ascending: false })
         .limit(1)
         .maybeSingle(),
+      supabase
+        .from("auto_bid_limits")
+        .select("max_amount,is_active")
+        .eq("auction_id", auctionId)
+        .eq("bidder_id", userId)
+        .eq("is_active", true)
+        .maybeSingle(),
     ]);
 
     if (canManageError) {
@@ -294,9 +303,14 @@ export async function getAuctionById(auctionId: string, userId?: string | null) 
       throw new Error(liveSessionError.message);
     }
 
+    if (autoBidError) {
+      throw new Error(autoBidError.message);
+    }
+
     canManage = Boolean(canManageData);
     canStream = Boolean(canStreamData);
     activeLivestream = (liveSession ?? null) as typeof activeLivestream;
+    myAutoBidMax = autoBidRow?.max_amount ?? null;
   }
 
   const highestBid = (bids ?? []).reduce((acc, row) => Math.max(acc, row.amount), auction.starting_bid);
@@ -333,6 +347,7 @@ export async function getAuctionById(auctionId: string, userId?: string | null) 
     can_manage: canManage,
     can_stream: canStream,
     active_livestream: activeLivestream,
+    my_auto_bid_max: myAutoBidMax,
   };
 }
 

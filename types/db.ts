@@ -261,6 +261,29 @@ export type Database = {
         };
         Update: never;
       };
+      auto_bid_limits: {
+        Row: {
+          auction_id: string;
+          bidder_id: string;
+          max_amount: number;
+          is_active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          auction_id: string;
+          bidder_id: string;
+          max_amount: number;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          max_amount?: number;
+          is_active?: boolean;
+          updated_at?: string;
+        };
+      };
       auction_conversations: {
         Row: {
           id: string;

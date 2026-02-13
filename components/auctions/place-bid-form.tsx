@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { LoaderCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,7 @@ type BidPanelProps = {
   bidPricingMode?: "lot_total" | "per_head";
   animalCount?: number;
   isWaitingForPrevious?: boolean;
+  currentAutoBidMax?: number | null;
 };
 
 export function PlaceBidForm({
@@ -37,10 +38,16 @@ export function PlaceBidForm({
   bidPricingMode = "lot_total",
   animalCount = 1,
   isWaitingForPrevious = false,
+  currentAutoBidMax = null,
 }: BidPanelProps) {
   const router = useRouter();
   const { formatted, isEnded } = useServerCountdown(endTime, serverNow);
   const [amount, setAmount] = useState<number>(currentPrice + minIncrement);
+  const [autoBidMax, setAutoBidMax] = useState<number>(
+    currentAutoBidMax ?? currentPrice + minIncrement,
+  );
+  const [autoBidSaving, setAutoBidSaving] = useState(false);
+  const [autoBidClearing, setAutoBidClearing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const quickValues = useMemo(
@@ -50,6 +57,12 @@ export function PlaceBidForm({
   const isPerHead = bidPricingMode === "per_head";
   const nextBidTotal = (currentPrice + minIncrement) * Math.max(1, animalCount);
   const isBidDisabled = !canBid || status !== "live" || isEnded || isWaitingForPrevious || submitting;
+  const minimumAutoBid = currentPrice + minIncrement;
+  const canManageAutoBid = !isBidDisabled;
+
+  useEffect(() => {
+    setAutoBidMax(currentAutoBidMax ?? currentPrice + minIncrement);
+  }, [currentAutoBidMax, currentPrice, minIncrement]);
 
   const submitBid = async () => {
     if (!canBid) {
@@ -90,6 +103,64 @@ export function PlaceBidForm({
       toast.error(error instanceof Error ? error.message : "Failed to place bid");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const saveAutoBid = async () => {
+    if (!canBid) {
+      toast.error("You are not approved to bid yet");
+      return;
+    }
+
+    if (autoBidMax < minimumAutoBid) {
+      toast.error(`Max auto-bid must be at least ${formatZar(minimumAutoBid)}`);
+      return;
+    }
+
+    setAutoBidSaving(true);
+
+    try {
+      const response = await fetch(`/api/auctions/${auctionId}/auto-bid`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ max_amount: autoBidMax }),
+      });
+      const payload = await response.json();
+
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error ?? "Failed to save auto-bid");
+      }
+
+      toast.success("Auto-bid saved");
+      router.refresh();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to save auto-bid");
+    } finally {
+      setAutoBidSaving(false);
+    }
+  };
+
+  const disableAutoBid = async () => {
+    setAutoBidClearing(true);
+
+    try {
+      const response = await fetch(`/api/auctions/${auctionId}/auto-bid`, {
+        method: "DELETE",
+      });
+      const payload = await response.json();
+
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error ?? "Failed to disable auto-bid");
+      }
+
+      toast.success("Auto-bid disabled");
+      router.refresh();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to disable auto-bid");
+    } finally {
+      setAutoBidClearing(false);
     }
   };
 
@@ -150,6 +221,45 @@ export function PlaceBidForm({
         {submitting ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : null}
         Place bid
       </Button>
+
+      <div className="space-y-2 rounded-2xl border border-slate-200 p-3 dark:border-slate-800">
+        <p className="text-xs uppercase tracking-wide text-slate-500">Auto-bid</p>
+        <p className="text-xs text-slate-500">
+          Set your max amount and WildBidZA will auto-bid by one increment when you are outbid.
+        </p>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_auto]">
+          <Input
+            type="number"
+            min={minimumAutoBid}
+            step={minIncrement}
+            value={autoBidMax}
+            onChange={(event) => setAutoBidMax(Number(event.target.value))}
+            disabled={!canManageAutoBid || autoBidSaving || autoBidClearing}
+          />
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={saveAutoBid}
+            disabled={!canManageAutoBid || autoBidSaving || autoBidClearing}
+          >
+            {autoBidSaving ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : null}
+            Save max
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={disableAutoBid}
+            disabled={!currentAutoBidMax || autoBidSaving || autoBidClearing}
+          >
+            {autoBidClearing ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : null}
+            Disable
+          </Button>
+        </div>
+        <p className="text-xs text-slate-500">
+          Minimum auto-bid max now: {formatZar(minimumAutoBid)}
+          {currentAutoBidMax ? ` · Active max: ${formatZar(currentAutoBidMax)}` : ""}
+        </p>
+      </div>
 
       <p className="text-sm text-slate-500">
         {isWaitingForPrevious

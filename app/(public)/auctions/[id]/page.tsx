@@ -156,6 +156,7 @@ export default async function AuctionDetailPage({ params }: { params: Promise<{ 
             bidPricingMode={auction.bid_pricing_mode}
             animalCount={auction.animal_count ?? 1}
             isWaitingForPrevious={auction.is_waiting_for_previous}
+            currentAutoBidMax={auction.my_auto_bid_max}
           />
         </div>
       </div>
