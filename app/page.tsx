@@ -143,6 +143,9 @@ export default async function HomePage() {
 
         <section className="mx-auto w-full max-w-7xl px-4 pb-16 sm:px-6 lg:px-8">
           <div className="rounded-[2rem] border border-brand-100 bg-white/90 p-4 shadow-2xl shadow-brand-200/40 backdrop-blur dark:border-brand-900/40 dark:bg-slate-900/80 dark:shadow-none">
+            <blockquote className="mb-4 rounded-2xl border border-emerald-200/80 bg-emerald-50/70 px-4 py-3 text-sm italic leading-relaxed text-emerald-900 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-100">
+              “Every healthier herd starts with informed action: reduce unnecessary movement, improve traceability, and respond early to bek-en-klouseer risks to protect farmers, livestock, and South Africa&apos;s food future.”
+            </blockquote>
             <div className="mb-4 flex items-center justify-between">
               <div>
                 <h2 className="text-xl font-semibold">Biosecurity map view</h2>
