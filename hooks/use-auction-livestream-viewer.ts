@@ -33,6 +33,7 @@ type LivestreamSignal = {
 
 const GUEST_PARTICIPANT_KEY = "wildbid_guest_livestream_participant_id";
 const SIGNAL_POLL_INTERVAL_MS = 800;
+const SIGNAL_SINCE_FLOOR_ISO = "1970-01-01T00:00:00.000Z";
 
 function isUuid(value: string | null | undefined) {
   if (!value) {
@@ -124,7 +125,7 @@ export function useAuctionLivestreamViewer({
   const remoteStreamRef = useRef<MediaStream | null>(null);
   const pendingIceCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
   const connectedRef = useRef(false);
-  const sinceRef = useRef(new Date(Date.now() - 5000).toISOString());
+  const sinceRef = useRef(SIGNAL_SINCE_FLOOR_ISO);
   const pollingRef = useRef(false);
 
   useEffect(() => {
@@ -188,7 +189,7 @@ export function useAuctionLivestreamViewer({
     hostUserRef.current = null;
     pendingIceCandidatesRef.current = [];
     connectedRef.current = false;
-    sinceRef.current = new Date(Date.now() - 5000).toISOString();
+    sinceRef.current = SIGNAL_SINCE_FLOOR_ISO;
     pollingRef.current = false;
     setSessionId(null);
   }, [auctionId, participantId]);
@@ -295,7 +296,7 @@ export function useAuctionLivestreamViewer({
         setSessionId(joined.session_id);
         setViewerCount(joined.viewer_count ?? 0);
         connectedRef.current = false;
-        sinceRef.current = new Date(Date.now() - 5000).toISOString();
+        sinceRef.current = SIGNAL_SINCE_FLOOR_ISO;
 
         const pc = new RTCPeerConnection(LIVESTREAM_ICE_CONFIG);
         pcRef.current = pc;

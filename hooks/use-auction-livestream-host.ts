@@ -32,6 +32,7 @@ type LivestreamSignal = {
 };
 
 const SIGNAL_POLL_INTERVAL_MS = 800;
+const SIGNAL_SINCE_FLOOR_ISO = "1970-01-01T00:00:00.000Z";
 
 function toUserErrorMessage(error: unknown, fallback: string) {
   const message = error instanceof Error ? error.message : fallback;
@@ -129,7 +130,7 @@ export function useAuctionLivestreamHost({
   const streamRef = useRef<MediaStream | null>(null);
   const sessionRef = useRef<LivestreamSession | null>(null);
   const pendingIceCandidatesRef = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
-  const sinceRef = useRef(new Date(Date.now() - 5000).toISOString());
+  const sinceRef = useRef(SIGNAL_SINCE_FLOOR_ISO);
   const signalPollingRef = useRef(false);
 
   const connectionHealth = useMemo(() => {
@@ -171,7 +172,7 @@ export function useAuctionLivestreamHost({
     peersRef.current.clear();
     pendingIceCandidatesRef.current.clear();
     signalPollingRef.current = false;
-    sinceRef.current = new Date(Date.now() - 5000).toISOString();
+    sinceRef.current = SIGNAL_SINCE_FLOOR_ISO;
   }, []);
 
   const stopTracks = useCallback(() => {
@@ -389,7 +390,7 @@ export function useAuctionLivestreamHost({
       const liveSession = payload.data;
       setSession(liveSession);
       setStatus("live");
-      sinceRef.current = new Date(Date.now() - 5000).toISOString();
+      sinceRef.current = SIGNAL_SINCE_FLOOR_ISO;
 
       startSignalPolling(liveSession);
 

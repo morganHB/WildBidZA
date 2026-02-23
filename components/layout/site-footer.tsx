@@ -6,6 +6,7 @@ import { APP_NAME } from "@/lib/constants/app";
 const footerLinks = [
   { href: "/", label: "Home" },
   { href: "/about-us", label: "About Us" },
+  { href: "/safety", label: "Safety" },
   { href: "/auctions", label: "Auctions" },
   { href: "/auctions/live", label: "Bid Live" },
   { href: "/kraal-bookings", label: "Kraal Bookings" },
@@ -26,7 +27,7 @@ export function SiteFooter() {
           <div className="space-y-6">
             <Link href="/" className="inline-flex items-center gap-3">
               <span className="relative h-11 w-11 overflow-hidden rounded-xl border border-white/15">
-                <Image src="/liba/logo.webp" alt="LIBA logo" fill sizes="44px" className="object-cover" />
+                <Image src="/noordkaap_logo_transparent.png" alt="Noordkaap logo" fill sizes="44px" className="object-contain p-1" />
               </span>
               <span className="text-3xl font-black uppercase italic tracking-tighter">
                 {APP_NAME.split(" ")[0]}
