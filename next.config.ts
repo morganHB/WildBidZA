@@ -12,6 +12,11 @@ if (supabaseUrl) {
 }
 
 const nextConfig: NextConfig = {
+  onDemandEntries: {
+    // Keep compiled dev pages in memory longer to avoid frequent auth chunk rebuilds on slow WASM SWC fallback.
+    maxInactiveAge: 15 * 60 * 1000,
+    pagesBufferLength: 8,
+  },
   images: {
     remotePatterns: [
       {
@@ -39,6 +44,13 @@ const nextConfig: NextConfig = {
     serverActions: {
       bodySizeLimit: "4mb",
     },
+  },
+  webpack: (config) => {
+    if (config.output) {
+      // Increase script chunk timeout for slower local rebuilds.
+      config.output.chunkLoadTimeout = 300000;
+    }
+    return config;
   },
 };
 
