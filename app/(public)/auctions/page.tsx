@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, Image as ImageIcon, MonitorPlay, Radio, Video } from "lucide-react";
+import { ArrowRight, MonitorPlay, Radio, Video } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export default function AuctionsPage() {
@@ -47,14 +47,12 @@ export default function AuctionsPage() {
             </Button>
           </div>
 
-          <div className="rounded-[4rem] border-[6px] border-dashed border-stone-300 bg-white p-12 text-center shadow-sm">
-            <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-[2rem] bg-stone-100 text-stone-500">
-              <ImageIcon className="h-12 w-12" />
-            </div>
-            <h3 className="mt-8 text-3xl font-black uppercase italic tracking-tighter text-stone-900 md:text-5xl">
-              Add Section Photo 01
-            </h3>
-            <p className="mt-4 text-sm font-bold uppercase tracking-[0.3em] text-stone-500">Image Placeholder</p>
+          <div className="relative h-[420px] overflow-hidden rounded-[4rem] border border-stone-200 bg-white shadow-[0_35px_80px_-35px_rgba(0,0,0,0.45)] md:h-[520px]">
+            <img
+              src="/brahman_bib.png"
+              alt="Brahman cattle at auction"
+              className="h-full w-full object-cover object-[50%_45%]"
+            />
           </div>
         </div>
       </section>
@@ -82,14 +80,12 @@ export default function AuctionsPage() {
             </p>
           </div>
 
-          <div className="rounded-[4rem] border-[6px] border-dashed border-stone-300 bg-stone-50 p-12 text-center shadow-sm">
-            <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-[2rem] bg-white text-stone-500 shadow-sm">
-              <ImageIcon className="h-12 w-12" />
-            </div>
-            <h3 className="mt-8 text-3xl font-black uppercase italic tracking-tighter text-stone-900 md:text-5xl">
-              Add Section Photo 02
-            </h3>
-            <p className="mt-4 text-sm font-bold uppercase tracking-[0.3em] text-stone-500">Image Placeholder</p>
+          <div className="relative h-[420px] overflow-hidden rounded-[4rem] border border-stone-200 bg-stone-50 shadow-[0_35px_80px_-35px_rgba(0,0,0,0.45)] md:h-[520px]">
+            <img
+              src="/Liba_App_Bid.png"
+              alt="Liba auction bidding interface on mobile"
+              className="h-full w-full object-cover object-[50%_50%]"
+            />
           </div>
         </div>
       </section>
