@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { LoaderCircle } from "lucide-react";
@@ -20,6 +21,7 @@ type BidPanelProps = {
   endTime: string;
   canBid: boolean;
   isWinning: boolean;
+  isAuthenticated?: boolean;
   bidPricingMode?: "lot_total" | "per_head";
   animalCount?: number;
   isWaitingForPrevious?: boolean;
@@ -35,6 +37,7 @@ export function PlaceBidForm({
   endTime,
   canBid,
   isWinning,
+  isAuthenticated = true,
   bidPricingMode = "lot_total",
   animalCount = 1,
   isWaitingForPrevious = false,
@@ -43,28 +46,30 @@ export function PlaceBidForm({
   const router = useRouter();
   const { formatted, isEnded } = useServerCountdown(endTime, serverNow);
   const [amount, setAmount] = useState<number>(currentPrice + minIncrement);
-  const [autoBidMax, setAutoBidMax] = useState<number>(
-    currentAutoBidMax ?? currentPrice + minIncrement,
-  );
+  const [autoBidMax, setAutoBidMax] = useState<number>(currentAutoBidMax ?? currentPrice + minIncrement);
   const [autoBidSaving, setAutoBidSaving] = useState(false);
   const [autoBidClearing, setAutoBidClearing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  const quickValues = useMemo(
-    () => [currentPrice + minIncrement],
-    [currentPrice, minIncrement],
-  );
+  const quickValues = useMemo(() => [currentPrice + minIncrement], [currentPrice, minIncrement]);
   const isPerHead = bidPricingMode === "per_head";
   const nextBidTotal = (currentPrice + minIncrement) * Math.max(1, animalCount);
-  const isBidDisabled = !canBid || status !== "live" || isEnded || isWaitingForPrevious || submitting;
+  const isBidDisabled = !isAuthenticated || !canBid || status !== "live" || isEnded || isWaitingForPrevious || submitting;
   const minimumAutoBid = currentPrice + minIncrement;
   const canManageAutoBid = !isBidDisabled;
+  const signInHref = `/sign-in?next=${encodeURIComponent(`/auctions/${auctionId}`)}&reason=bid-login`;
 
   useEffect(() => {
     setAutoBidMax(currentAutoBidMax ?? currentPrice + minIncrement);
   }, [currentAutoBidMax, currentPrice, minIncrement]);
 
   const submitBid = async () => {
+    if (!isAuthenticated) {
+      toast.error("You must log in to bid");
+      router.push(signInHref);
+      return;
+    }
+
     if (!canBid) {
       toast.error("You are not approved to bid yet");
       return;
@@ -107,6 +112,12 @@ export function PlaceBidForm({
   };
 
   const saveAutoBid = async () => {
+    if (!isAuthenticated) {
+      toast.error("You must log in to bid");
+      router.push(signInHref);
+      return;
+    }
+
     if (!canBid) {
       toast.error("You are not approved to bid yet");
       return;
@@ -164,24 +175,56 @@ export function PlaceBidForm({
     }
   };
 
+  if (!isAuthenticated) {
+    return (
+      <div className="space-y-4 rounded-3xl border border-stone-200 bg-white p-5 shadow-sm">
+        <div className="space-y-1">
+          <p className="text-xs uppercase tracking-wide text-stone-500">
+            {isPerHead ? "Current bid / head" : "Current bid"}
+          </p>
+          <p className="text-3xl font-semibold tracking-tight text-stone-900">{formatZar(currentPrice)}</p>
+          {isPerHead ? (
+            <p className="text-xs text-stone-500">
+              Total for packet ({animalCount} head): {formatZar(currentPrice * Math.max(1, animalCount))}
+            </p>
+          ) : null}
+        </div>
+
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm font-medium text-amber-900">
+          You must log in to bid in this live auction.
+        </div>
+
+        <div className="rounded-2xl bg-stone-100 p-3">
+          <p className="text-xs uppercase tracking-wide text-stone-500">Ends</p>
+          <p className="mt-1 font-semibold text-stone-900">{formatted}</p>
+          <p className="mt-1 text-xs text-stone-500">{formatAuctionDateLong(endTime)}</p>
+        </div>
+
+        <Button asChild className="h-11 w-full rounded-xl bg-red-700 text-base font-semibold text-white hover:bg-stone-900">
+          <Link href={signInHref}>Sign in to place bid</Link>
+        </Button>
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-4 rounded-3xl border border-brand-100 bg-white/95 p-5 shadow-sm shadow-brand-100/40 dark:border-brand-900/40 dark:bg-slate-900/90">
+    <div className="space-y-4 rounded-3xl border border-stone-200 bg-white p-5 shadow-sm">
       <div className="space-y-1">
-        <p className="text-xs uppercase tracking-wide text-slate-500">
+        <p className="text-xs uppercase tracking-wide text-stone-500">
           {isPerHead ? "Current bid / head" : "Current bid"}
         </p>
-        <p className="text-3xl font-semibold tracking-tight">{formatZar(currentPrice)}</p>
+        <p className="text-3xl font-semibold tracking-tight text-stone-900">{formatZar(currentPrice)}</p>
         {isPerHead ? (
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-stone-500">
             Total for packet ({animalCount} head): {formatZar(currentPrice * Math.max(1, animalCount))}
           </p>
         ) : null}
       </div>
 
-      <div className="rounded-2xl bg-slate-100 p-3 dark:bg-slate-950">
-        <p className="text-xs uppercase tracking-wide text-slate-500">Ends</p>
-        <p className="mt-1 font-semibold">{formatted}</p>
-        <p className="mt-1 text-xs text-slate-500">{formatAuctionDateLong(endTime)}</p>
+      <div className="rounded-2xl bg-stone-100 p-3">
+        <p className="text-xs uppercase tracking-wide text-stone-500">Ends</p>
+        <p className="mt-1 font-semibold text-stone-900">{formatted}</p>
+        <p className="mt-1 text-xs text-stone-500">{formatAuctionDateLong(endTime)}</p>
       </div>
 
       <div className="space-y-2">
@@ -197,7 +240,7 @@ export function PlaceBidForm({
           onChange={(event) => setAmount(Number(event.target.value))}
           disabled={isBidDisabled}
         />
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-stone-500">
           Minimum next bid: {formatZar(currentPrice + minIncrement)}
           {isPerHead ? ` per head (total ${formatZar(nextBidTotal)})` : ""}
         </p>
@@ -205,27 +248,21 @@ export function PlaceBidForm({
 
       <div className="grid grid-cols-1 gap-2">
         {quickValues.map((value) => (
-          <Button
-            key={value}
-            type="button"
-            variant="secondary"
-            onClick={() => setAmount(value)}
-            disabled={isBidDisabled}
-          >
+          <Button key={value} type="button" variant="secondary" onClick={() => setAmount(value)} disabled={isBidDisabled}>
             +1x increment ({formatZar(value)})
           </Button>
         ))}
       </div>
 
-      <Button className="h-11 w-full rounded-xl text-base font-semibold" onClick={submitBid} disabled={isBidDisabled}>
+      <Button className="h-11 w-full rounded-xl bg-red-700 text-base font-semibold text-white hover:bg-stone-900" onClick={submitBid} disabled={isBidDisabled}>
         {submitting ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : null}
         Place bid
       </Button>
 
-      <div className="space-y-2 rounded-2xl border border-slate-200 p-3 dark:border-slate-800">
-        <p className="text-xs uppercase tracking-wide text-slate-500">Auto-bid</p>
-        <p className="text-xs text-slate-500">
-          Set your max amount and WildBidZA will auto-bid by one increment when you are outbid.
+      <div className="space-y-2 rounded-2xl border border-stone-200 p-3">
+        <p className="text-xs uppercase tracking-wide text-stone-500">Auto-bid</p>
+        <p className="text-xs text-stone-500">
+          Set your max amount and LIBA Auctioneers will auto-bid by one increment when you are outbid.
         </p>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_auto]">
           <Input
@@ -255,13 +292,13 @@ export function PlaceBidForm({
             Disable
           </Button>
         </div>
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-stone-500">
           Minimum auto-bid max now: {formatZar(minimumAutoBid)}
-          {currentAutoBidMax ? ` · Active max: ${formatZar(currentAutoBidMax)}` : ""}
+          {currentAutoBidMax ? ` - Active max: ${formatZar(currentAutoBidMax)}` : ""}
         </p>
       </div>
 
-      <p className="text-sm text-slate-500">
+      <p className="text-sm text-stone-500">
         {isWaitingForPrevious
           ? "This packet will open after the previous packet closes."
           : isWinning

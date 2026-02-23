@@ -1,162 +1,87 @@
 import Link from "next/link";
-import { ArrowRight, Gavel, ShieldCheck, Sparkles, Timer } from "lucide-react";
+import { ArrowRight, Gavel, Radio } from "lucide-react";
 import { SiteFooter } from "@/components/layout/site-footer";
 import { SiteHeader } from "@/components/layout/site-header";
-import { AuctionGrid } from "@/components/auctions/auction-grid";
-import { BiosecurityMap } from "@/components/home/biosecurity-map";
-import { Button } from "@/components/ui/button";
-import { APP_NAME } from "@/lib/constants/app";
-import { getAuctions } from "@/lib/auctions/queries";
 
-const highlights = [
-  {
-    icon: Gavel,
-    title: "Realtime bidding",
-    description: "Live bid streams with server-side validation and anti-sniping protection.",
-  },
-  {
-    icon: ShieldCheck,
-    title: "Verified access",
-    description: "Approval flow for bidders and sellers with strict role-based permissions.",
-  },
-  {
-    icon: Timer,
-    title: "Time-zone accurate",
-    description: "All listings and countdowns are aligned to Africa/Johannesburg.",
-  },
-];
-
-export default async function HomePage() {
-  const featured = await getAuctions({ status: "live", sort: "ending_soon", limit: 6 });
-
+export default function HomePage() {
   return (
-    <div className="min-h-screen bg-gradient-to-b from-brand-50/60 via-white to-white dark:from-slate-950 dark:via-slate-950 dark:to-slate-900">
+    <div className="liba-public min-h-screen bg-white text-stone-900">
       <SiteHeader />
-      <main>
-        <section className="relative overflow-hidden pb-12 pt-14 sm:pb-16 lg:pt-20">
-          <div className="pointer-events-none absolute -left-20 top-0 h-64 w-64 rounded-full bg-brand-200/70 blur-3xl" />
-          <div className="pointer-events-none absolute -right-10 top-20 h-72 w-72 rounded-full bg-emerald-200/40 blur-3xl" />
-          <div className="mx-auto w-full max-w-7xl space-y-8 px-4 sm:px-6 lg:px-8">
-            <div className="space-y-6">
-              <p className="inline-flex items-center rounded-full border border-brand-200 bg-white/90 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.2em] text-brand-700 shadow-sm">
-                Welcome to {APP_NAME}
-              </p>
-              <h1 className="text-balance text-4xl font-semibold tracking-tight text-slate-900 sm:text-5xl lg:text-6xl dark:text-white">
-                A secure livestock bidding platform for{" "}
-                <span className="bg-gradient-to-r from-brand-500 via-emerald-500 to-teal-500 bg-clip-text text-transparent">
-                  biosecurity action
-                </span>
-              </h1>
-              <p className="max-w-3xl text-base leading-relaxed text-slate-600 dark:text-slate-300">
-                WildBidZA is a secure online livestock bidding platform supporting responsible livestock management,
-                stronger farm-to-farm traceability, and practical biosecurity action across South Africa.
-              </p>
-              <p className="max-w-3xl text-base leading-relaxed text-slate-600 dark:text-slate-300">
-                Our mission is simple but powerful: reduce the spread of foot-and-mouth disease and other biosecurity
-                risks by creating a controlled, transparent, and traceable way to trade livestock.
-              </p>
-              <p className="max-w-3xl text-base leading-relaxed text-slate-600 dark:text-slate-300">
-                By moving animal bidding online, WildBidZA minimizes unnecessary movement, limits high-risk contact
-                points, and supports healthier herds and sustainable outcomes for livestock farmers.
-              </p>
-              <div className="grid gap-3 sm:grid-cols-3">
-                {highlights.map((item) => {
-                  const Icon = item.icon;
-                  return (
-                    <div
-                      key={item.title}
-                      className="rounded-2xl border border-brand-100 bg-white/85 p-4 shadow-sm shadow-brand-100/40 backdrop-blur transition hover:-translate-y-0.5 dark:border-brand-900/50 dark:bg-slate-900/70"
-                    >
-                      <Icon className="h-4 w-4 text-brand-600" />
-                      <p className="mt-2 text-sm font-semibold">{item.title}</p>
-                      <p className="mt-1 text-xs leading-relaxed text-slate-500 dark:text-slate-300">{item.description}</p>
-                    </div>
-                  );
-                })}
-              </div>
-              <div className="flex flex-wrap gap-3">
-                <Button asChild size="lg" className="rounded-2xl px-8">
-                  <Link href="/sign-up">
-                    Explore live listings <ArrowRight className="ml-2 h-4 w-4" />
-                  </Link>
-                </Button>
-                <Button asChild variant="outline" size="lg" className="rounded-2xl px-8">
-                  <Link href="/how-it-works">How it works</Link>
-                </Button>
-              </div>
-              <p className="text-sm text-slate-500">
-                Whether you are a livestock farmer, compliance partner, or registered buyer, {APP_NAME} connects you
-                to a smarter way of trading that protects animals, livelihoods, and South Africa&apos;s agricultural
-                heritage.
-              </p>
-            </div>
+      <main className="animate-in">
+        <section className="relative h-[74vh] w-full overflow-hidden bg-black">
+          <div className="absolute inset-0">
+            <div className="absolute inset-0 z-10 bg-stone-900/30" />
+            <video autoPlay loop muted playsInline className="h-full w-full object-cover">
+              <source src="/herovideo.mp4" type="video/mp4" />
+            </video>
+          </div>
+          <div className="absolute inset-x-0 bottom-16 z-20 mx-auto w-full max-w-7xl px-6">
+            <p className="inline-flex items-center gap-2 rounded-full border border-white/40 bg-black/25 px-4 py-2 text-[10px] font-black uppercase tracking-[0.35em] text-white backdrop-blur">
+              <span className="h-2 w-2 animate-pulse rounded-full bg-red-500" />
+              The Livestock Marketplace
+            </p>
+            <h1 className="mt-5 max-w-4xl text-4xl font-black uppercase italic leading-[0.9] tracking-tighter text-white md:text-7xl">
+              Trade Trusted Livestock
+              <span className="block text-red-600">Live. Direct. Proven.</span>
+            </h1>
           </div>
         </section>
 
-        <section className="mx-auto w-full max-w-7xl px-4 pb-8 sm:px-6 lg:px-8">
-          <form action="/auctions" className="rounded-3xl border border-brand-100 bg-white/95 p-4 shadow-sm dark:border-brand-900/40 dark:bg-slate-900">
-            <div className="grid gap-3 lg:grid-cols-[1.4fr_1fr_1fr_auto]">
-              <input
-                type="text"
-                name="q"
-                placeholder="Search breeds, species..."
-                className="h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none ring-brand-500 transition focus:ring-2 dark:border-slate-800 dark:bg-slate-950"
-              />
-              <select
-                name="status"
-                defaultValue="all"
-                className="h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none ring-brand-500 transition focus:ring-2 dark:border-slate-800 dark:bg-slate-950"
-              >
-                <option value="all">All statuses</option>
-                <option value="live">Live</option>
-                <option value="upcoming">Upcoming</option>
-                <option value="ended">Past</option>
-              </select>
-              <select
-                name="sort"
-                defaultValue="ending_soon"
-                className="h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none ring-brand-500 transition focus:ring-2 dark:border-slate-800 dark:bg-slate-950"
-              >
-                <option value="ending_soon">Sort by: Ending soon</option>
-                <option value="newest">Sort by: Newest</option>
-                <option value="highest_price">Sort by: Highest price</option>
-              </select>
-              <Button type="submit" className="h-12 rounded-2xl px-6">
-                Search
-              </Button>
-            </div>
-          </form>
-        </section>
-
-        <section className="mx-auto w-full max-w-7xl px-4 pb-16 sm:px-6 lg:px-8">
-          <div className="mb-6 flex items-end justify-between">
-            <div>
-              <h2 className="text-3xl font-semibold tracking-tight">Live Auctions</h2>
-              <p className="mt-1 text-sm text-slate-500">Bid in real time on approved listings across South Africa.</p>
-            </div>
-            <Button asChild variant="ghost" className="text-brand-700 hover:text-brand-800 dark:text-brand-300 dark:hover:text-brand-200">
-              <Link href="/auctions/live">View all</Link>
-            </Button>
-          </div>
-          <AuctionGrid auctions={featured} />
-        </section>
-
-        <section className="mx-auto w-full max-w-7xl px-4 pb-16 sm:px-6 lg:px-8">
-          <div className="rounded-[2rem] border border-brand-100 bg-white/90 p-4 shadow-2xl shadow-brand-200/40 backdrop-blur dark:border-brand-900/40 dark:bg-slate-900/80 dark:shadow-none">
-            <blockquote className="mb-4 rounded-2xl border border-emerald-200/80 bg-emerald-50/70 px-4 py-3 text-sm italic leading-relaxed text-emerald-900 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-100">
-              “Every healthier herd starts with informed action: reduce unnecessary movement, improve traceability, and respond early to bek-en-klouseer risks to protect farmers, livestock, and South Africa&apos;s food future.”
-            </blockquote>
-            <div className="mb-4 flex items-center justify-between">
-              <div>
-                <h2 className="text-xl font-semibold">Biosecurity map view</h2>
-                <p className="text-sm text-slate-500">Zoomable livestock-risk monitor for disease-aware trading</p>
-              </div>
-              <span className="inline-flex animate-pulse items-center gap-1 rounded-full bg-red-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-red-700">
-                <Sparkles className="h-3 w-3" />
-                High alert
+        <section className="relative overflow-hidden bg-white px-6 py-32 text-center">
+          <div className="mx-auto max-w-5xl">
+            <h2 className="relative text-4xl font-black uppercase italic leading-tight tracking-tighter md:text-7xl">
+              <span className="absolute inset-0 text-stone-200/70">
+                Liba auctioneers is an auction house in the heart of the Vaalharts
               </span>
+              <span className="relative bg-gradient-to-r from-stone-500 via-amber-200 to-stone-500 bg-[length:200%_auto] bg-clip-text text-transparent animate-shimmer">
+                Liba auctioneers is an auction house in the heart of the Vaalharts
+              </span>
+            </h2>
+            <div className="mt-14 flex items-center justify-center gap-5">
+              <span className="h-1.5 w-1.5 rounded-full bg-red-700" />
+              <span className="text-[11px] font-black uppercase tracking-[0.55em] text-amber-900">Experience Heritage</span>
+              <span className="h-1.5 w-1.5 rounded-full bg-red-700" />
             </div>
-            <BiosecurityMap />
+          </div>
+        </section>
+
+        <section className="px-6 pb-32">
+          <div className="mx-auto grid w-full max-w-7xl gap-8 md:grid-cols-2">
+            <Link
+              href="/auctions/live"
+              className="liba-card-lift group relative overflow-hidden rounded-[3rem] bg-stone-900 p-12 text-left text-white shadow-2xl"
+            >
+              <div className="relative z-10">
+                <Radio className="mb-6 text-red-600" size={40} />
+                <h3 className="mb-4 text-5xl font-black uppercase italic tracking-tighter">Bid Live</h3>
+                <p className="font-medium text-stone-300">Join the active room and secure your stock.</p>
+              </div>
+              <div className="absolute bottom-[-10%] right-[-5%] text-[15rem] font-black uppercase italic text-white/[0.04]">
+                LIVE
+              </div>
+            </Link>
+            <Link
+              href="/auctions"
+              className="liba-card-lift group relative overflow-hidden rounded-[3rem] border-2 border-stone-100 bg-white p-12 text-left text-stone-900 shadow-sm"
+            >
+              <div className="relative z-10">
+                <Gavel className="mb-6 text-amber-700" size={40} />
+                <h3 className="mb-4 text-5xl font-black uppercase italic tracking-tighter">Auctions</h3>
+                <p className="font-medium text-stone-500">Explore the hub and our hybrid trade model.</p>
+              </div>
+              <div className="absolute bottom-[-10%] right-[-5%] text-[15rem] font-black uppercase italic text-stone-900/[0.03]">
+                HUB
+              </div>
+            </Link>
+          </div>
+
+          <div className="mx-auto mt-16 flex w-full max-w-7xl justify-center md:justify-end">
+            <Link
+              href="/about-us"
+              className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-[0.35em] text-red-700 transition hover:text-stone-900"
+            >
+              Learn About LIBA <ArrowRight className="h-4 w-4" />
+            </Link>
           </div>
         </section>
       </main>

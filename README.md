@@ -1,4 +1,4 @@
-# WildBidZA
+# LIBA Auctioneers Platform
 
 Production-ready online auction platform for South African livestock/game-style listings, built with Next.js + Supabase.
 
@@ -68,7 +68,7 @@ scripts/
 Copy `.env.example` to `.env.local`:
 
 ```bash
-NEXT_PUBLIC_APP_NAME=WildBidZA
+NEXT_PUBLIC_APP_NAME=LIBA Auctioneers
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
@@ -78,7 +78,7 @@ GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
 ADMIN_EMAIL=
 ADMIN_PASSWORD=
-ADMIN_DISPLAY_NAME=WildBidZA Admin
+ADMIN_DISPLAY_NAME=LIBA Auctioneers Admin
 NEXT_PUBLIC_LIVESTREAM_TURN_URLS=
 NEXT_PUBLIC_LIVESTREAM_TURN_USERNAME=
 NEXT_PUBLIC_LIVESTREAM_TURN_CREDENTIAL=

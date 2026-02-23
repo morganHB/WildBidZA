@@ -25,6 +25,7 @@ export function AuctionLiveSection({
   isWinning,
   bids,
   currentUserId,
+  isAuthenticated = false,
   bidPricingMode,
   animalCount,
   isWaitingForPrevious,
@@ -40,6 +41,7 @@ export function AuctionLiveSection({
   isWinning: boolean;
   bids: BidRow[];
   currentUserId?: string;
+  isAuthenticated?: boolean;
   bidPricingMode?: "lot_total" | "per_head";
   animalCount?: number;
   isWaitingForPrevious?: boolean;
@@ -64,6 +66,7 @@ export function AuctionLiveSection({
         endTime={endTime}
         canBid={canBid}
         isWinning={isWinning}
+        isAuthenticated={isAuthenticated}
         bidPricingMode={bidPricingMode}
         animalCount={animalCount}
         isWaitingForPrevious={isWaitingForPrevious}

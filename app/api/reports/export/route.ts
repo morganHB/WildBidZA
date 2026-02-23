@@ -53,7 +53,7 @@ export async function GET(request: Request) {
 
     const csv = reportToCsv(report);
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const fileName = `wildbidza-${report.type}-${stamp}.csv`;
+    const fileName = `liba-auctioneers-${report.type}-${stamp}.csv`;
 
     return new Response(csv, {
       status: 200,

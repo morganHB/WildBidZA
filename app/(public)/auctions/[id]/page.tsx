@@ -36,7 +36,7 @@ export default async function AuctionDetailPage({ params }: { params: Promise<{ 
       : null;
 
   return (
-    <main className="mx-auto w-full max-w-7xl space-y-6 px-4 py-8 sm:px-6 lg:px-8">
+    <main className="liba-page-shell mx-auto w-full max-w-7xl space-y-6 px-4 py-10 sm:px-6 lg:px-8">
       <div className="space-y-3">
         <div className="flex flex-wrap items-center gap-2">
           <AuctionStatusBadge status={auction.status} />
@@ -54,7 +54,7 @@ export default async function AuctionDetailPage({ params }: { params: Promise<{ 
             </Badge>
           ) : null}
         </div>
-        <h1 className="text-3xl font-semibold tracking-tight">{auction.title}</h1>
+        <h1 className="text-3xl font-black uppercase italic tracking-tight text-stone-900">{auction.title}</h1>
         <p className="text-sm text-slate-500">
           {auction.category?.name} - {auction.city ? `${auction.city}, ` : ""}
           {auction.province ?? "South Africa"} - Ends {formatAuctionDateLong(auction.end_time)}
@@ -153,6 +153,7 @@ export default async function AuctionDetailPage({ params }: { params: Promise<{ 
             isWinning={isWinning}
             bids={auction.bids}
             currentUserId={context.user?.id}
+            isAuthenticated={Boolean(context.user?.id)}
             bidPricingMode={auction.bid_pricing_mode}
             animalCount={auction.animal_count ?? 1}
             isWaitingForPrevious={auction.is_waiting_for_previous}

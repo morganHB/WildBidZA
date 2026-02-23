@@ -17,6 +17,8 @@ type AuctionSummary = AuctionRow & {
     muted: boolean;
   }[];
   current_price: number;
+  bid_count: number;
+  top_bidder_name?: string | null;
   is_favorited: boolean;
   has_active_stream: boolean;
 };
@@ -153,12 +155,20 @@ export async function getAuctions(filters: AuctionListFilter, userId?: string | 
   const auctionIds = filteredByStatus.map((row) => row.id);
 
   const highestByAuction = new Map<string, number>();
+  const topBidderByAuction = new Map<string, string | null>();
+  const bidCountByAuction = new Map<string, number>();
   const liveStreamAuctionIds = new Set<string>();
 
   if (auctionIds.length > 0) {
     const { data: bids, error: bidError } = await supabase
       .from("bids")
-      .select("auction_id,amount")
+      .select(
+        `
+        auction_id,
+        amount,
+        profile:profiles!bids_bidder_id_fkey(display_name)
+      `,
+      )
       .in("auction_id", auctionIds)
       .order("amount", { ascending: false });
 
@@ -167,8 +177,14 @@ export async function getAuctions(filters: AuctionListFilter, userId?: string | 
     }
 
     for (const bid of bids ?? []) {
+      bidCountByAuction.set(bid.auction_id, (bidCountByAuction.get(bid.auction_id) ?? 0) + 1);
       if (!highestByAuction.has(bid.auction_id)) {
         highestByAuction.set(bid.auction_id, bid.amount);
+        const profile = Array.isArray(bid.profile) ? bid.profile[0] : bid.profile;
+        topBidderByAuction.set(
+          bid.auction_id,
+          (profile as { display_name?: string | null } | null)?.display_name ?? "Bidder",
+        );
       }
     }
 
@@ -211,6 +227,8 @@ export async function getAuctions(filters: AuctionListFilter, userId?: string | 
     ...row,
     status: deriveStatus(row, nowIso),
     current_price: highestByAuction.get(row.id) ?? row.starting_bid,
+    bid_count: bidCountByAuction.get(row.id) ?? 0,
+    top_bidder_name: topBidderByAuction.get(row.id) ?? null,
     is_favorited: favorites.has(row.id),
     has_active_stream: liveStreamAuctionIds.has(row.id),
     images: [...(row.images ?? [])].sort((a, b) => a.sort_order - b.sort_order),

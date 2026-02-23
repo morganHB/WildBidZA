@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "seed:admin": "tsx scripts/create-admin.ts",
     "seed:brahman-live": "tsx scripts/seed-brahman-live-auction.ts",
+    "seed:starter-data": "tsx scripts/seed-starter-data.ts",
     "verify:env": "tsx scripts/verify-env.ts",
     "seed:categories": "tsx scripts/seed-categories.ts"
   },

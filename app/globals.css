@@ -2,37 +2,37 @@
 
 :root {
   --radius: 1rem;
-  --background: 245 249 245;
-  --foreground: 12 32 24;
+  --background: 255 255 255;
+  --foreground: 28 25 23;
   --card: 255 255 255;
-  --card-foreground: 12 32 24;
-  --muted: 236 244 238;
-  --muted-foreground: 83 104 93;
-  --border: 213 228 218;
-  --input: 213 228 218;
-  --ring: 5 150 105;
-  --brand-50: 236 253 245;
-  --brand-100: 209 250 229;
-  --brand-200: 167 243 208;
-  --brand-300: 110 231 183;
-  --brand-400: 52 211 153;
-  --brand-500: 16 185 129;
-  --brand-600: 5 150 105;
-  --brand-700: 4 120 87;
-  --brand-800: 6 95 70;
-  --brand-900: 6 78 59;
+  --card-foreground: 28 25 23;
+  --muted: 245 245 244;
+  --muted-foreground: 87 83 78;
+  --border: 231 229 228;
+  --input: 214 211 209;
+  --ring: 185 28 28;
+  --brand-50: 255 251 235;
+  --brand-100: 254 243 199;
+  --brand-200: 253 230 138;
+  --brand-300: 252 211 77;
+  --brand-400: 251 191 36;
+  --brand-500: 217 119 6;
+  --brand-600: 180 83 9;
+  --brand-700: 146 64 14;
+  --brand-800: 120 53 15;
+  --brand-900: 92 44 10;
 }
 
 .dark {
-  --background: 4 14 10;
-  --foreground: 236 253 245;
-  --card: 9 24 17;
-  --card-foreground: 236 253 245;
-  --muted: 16 37 27;
-  --muted-foreground: 145 179 160;
-  --border: 26 57 41;
-  --input: 26 57 41;
-  --ring: 52 211 153;
+  --background: 10 10 10;
+  --foreground: 245 245 244;
+  --card: 24 24 27;
+  --card-foreground: 245 245 244;
+  --muted: 39 39 42;
+  --muted-foreground: 161 161 170;
+  --border: 63 63 70;
+  --input: 82 82 91;
+  --ring: 239 68 68;
 }
 
 @theme inline {
@@ -70,17 +70,8 @@ body {
 
 body {
   background: rgb(var(--background));
-  background-image:
-    radial-gradient(1200px 500px at 0% -15%, rgb(var(--brand-100) / 0.5), transparent 55%),
-    radial-gradient(900px 420px at 100% -20%, rgb(var(--brand-200) / 0.25), transparent 50%);
   color: rgb(var(--foreground));
   font-family: var(--font-manrope), "Segoe UI", sans-serif;
-}
-
-.dark body {
-  background-image:
-    radial-gradient(1200px 500px at 0% -15%, rgb(var(--brand-900) / 0.45), transparent 55%),
-    radial-gradient(900px 420px at 100% -20%, rgb(var(--brand-700) / 0.28), transparent 52%);
 }
 
 h1,
@@ -91,8 +82,86 @@ h4 {
 }
 
 ::selection {
-  background: rgb(var(--brand-200));
-  color: rgb(var(--brand-900));
+  background: rgb(185 28 28);
+  color: rgb(255 255 255);
+}
+
+.liba-public {
+  background-image:
+    radial-gradient(900px 500px at -12% 0%, rgb(250 204 21 / 0.15), transparent 58%),
+    radial-gradient(900px 500px at 112% 6%, rgb(239 68 68 / 0.1), transparent 56%);
+}
+
+.liba-auth {
+  background-image:
+    radial-gradient(760px 420px at 0% 0%, rgb(239 68 68 / 0.08), transparent 62%),
+    radial-gradient(720px 420px at 100% 0%, rgb(245 158 11 / 0.1), transparent 62%);
+}
+
+.liba-page-shell {
+  position: relative;
+}
+
+.liba-page-shell::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(140deg, rgb(255 255 255 / 0.88) 8%, transparent 48%),
+    radial-gradient(600px 280px at 12% 8%, rgb(239 68 68 / 0.05), transparent 60%);
+  z-index: 0;
+}
+
+.liba-page-shell > * {
+  position: relative;
+  z-index: 1;
+}
+
+.liba-card-lift {
+  transition:
+    transform 280ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 280ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    border-color 280ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.liba-card-lift:hover {
+  transform: translateY(-6px);
+  border-color: rgb(239 68 68 / 0.3);
+  box-shadow: 0 30px 50px -22px rgb(0 0 0 / 0.28);
+}
+
+.liba-glass {
+  backdrop-filter: blur(14px);
+  background: rgb(255 255 255 / 0.72);
+}
+
+.animate-in {
+  animation: liba-fade-in 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.animate-shimmer {
+  animation: liba-shimmer 7s linear infinite;
+}
+
+@keyframes liba-shimmer {
+  0% {
+    background-position: -220% center;
+  }
+  100% {
+    background-position: 220% center;
+  }
+}
+
+@keyframes liba-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @keyframes auction-ended-appear {
@@ -108,10 +177,10 @@ h4 {
 
 @keyframes auction-winner-accent {
   0% {
-    box-shadow: 0 0 0 0 rgba(5, 150, 105, 0.28);
+    box-shadow: 0 0 0 0 rgba(170, 115, 58, 0.28);
   }
   100% {
-    box-shadow: 0 0 0 10px rgba(5, 150, 105, 0);
+    box-shadow: 0 0 0 10px rgba(170, 115, 58, 0);
   }
 }
 
@@ -121,7 +190,7 @@ h4 {
 
 .auction-result-banner--ended {
   border-color: rgb(var(--border));
-  background: rgb(241 245 249 / 0.7);
+  background: rgb(248 250 252 / 0.7);
   color: rgb(var(--foreground));
 }
 
@@ -136,7 +205,7 @@ h4 {
 
 .auction-result-banner--neutral {
   border-color: rgb(var(--border));
-  background: rgb(241 245 249 / 0.4);
+  background: rgb(248 250 252 / 0.45);
   color: rgb(var(--foreground));
 }
 
@@ -145,8 +214,8 @@ h4 {
 }
 
 .dark .auction-result-banner--winner {
-  background: linear-gradient(135deg, rgb(6 78 59 / 0.45), rgb(4 120 87 / 0.25));
-  color: rgb(209 250 229);
+  background: linear-gradient(135deg, rgb(86 50 30 / 0.45), rgb(143 89 45 / 0.25));
+  color: rgb(247 232 206);
 }
 
 .dark .auction-result-banner--neutral {
@@ -155,7 +224,11 @@ h4 {
 
 @media (prefers-reduced-motion: reduce) {
   .auction-result-banner,
-  .auction-result-banner--winner {
+  .auction-result-banner--winner,
+  .liba-card-lift,
+  .animate-in,
+  .animate-shimmer {
     animation: none;
+    transition: none;
   }
 }
