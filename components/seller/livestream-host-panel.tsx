@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { LoaderCircle, Mic, MicOff, Radio, Video } from "lucide-react";
+import { LoaderCircle, Mic, MicOff, Radio, Repeat2, Video } from "lucide-react";
 import { useAuctionLivestreamHost } from "@/hooks/use-auction-livestream-host";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -30,12 +30,16 @@ export function LivestreamHostPanel({
     session,
     viewerCount,
     qualityPreset,
+    effectiveQualityPreset,
     setQualityPreset,
     audioEnabled,
     toggleMic,
     availableCameras,
     selectedCameraId,
     setSelectedCameraId,
+    cameraFacing,
+    flipCameraFacing,
+    orientation,
     start,
     stop,
     connectionHealth,
@@ -84,7 +88,7 @@ export function LivestreamHostPanel({
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-2">
             <Label>Camera</Label>
-            <Select value={selectedCameraId || "auto"} onValueChange={setSelectedCameraId}>
+            <Select value={selectedCameraId || "auto"} onValueChange={(value) => void setSelectedCameraId(value)}>
               <SelectTrigger>
                 <SelectValue placeholder="Select camera" />
               </SelectTrigger>
@@ -99,23 +103,38 @@ export function LivestreamHostPanel({
                   ))}
               </SelectContent>
             </Select>
+            <p className="text-xs text-slate-500">
+              Current lens: {cameraFacing === "environment" ? "Back camera" : "Front camera"}
+            </p>
           </div>
 
           <div className="space-y-2">
             <Label>Quality</Label>
             <Select
               value={qualityPreset}
-              onValueChange={(value: "standard" | "data_saver") => setQualityPreset(value)}
+              onValueChange={(value: "hd_720" | "full_hd_1080") => setQualityPreset(value)}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Select quality" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="standard">Standard (360p / 24fps)</SelectItem>
-                <SelectItem value="data_saver">Data saver (240p / 15fps)</SelectItem>
+                <SelectItem value="hd_720">HD 720p</SelectItem>
+                <SelectItem value="full_hd_1080">Full HD 1080p</SelectItem>
               </SelectContent>
             </Select>
+            <p className="text-xs text-slate-500">
+              Adaptive streaming is on. Current network profile:{" "}
+              {effectiveQualityPreset === "full_hd_1080" ? "1080p" : "720p"}.
+            </p>
           </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 dark:border-slate-800">
+          <Button type="button" variant="outline" onClick={() => void flipCameraFacing()} disabled={!canHost || isStopping}>
+            <Repeat2 className="mr-2 h-4 w-4" />
+            Switch to {cameraFacing === "environment" ? "front" : "back"} camera
+          </Button>
+          <span className="text-xs text-slate-500">Phone orientation: {orientation}</span>
         </div>
 
         <div className="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-2 dark:border-slate-800">
@@ -130,7 +149,7 @@ export function LivestreamHostPanel({
         </div>
 
         <div className="overflow-hidden rounded-xl border border-slate-200 bg-black dark:border-slate-800">
-          <video ref={videoRef} autoPlay muted playsInline className="aspect-video w-full object-cover" />
+          <video ref={videoRef} autoPlay muted playsInline className="aspect-video w-full bg-black object-contain" />
         </div>
 
         <div className="flex flex-wrap gap-2">

@@ -326,6 +326,30 @@ export type Database = {
         };
         Update: never;
       };
+      auction_report_finalizations: {
+        Row: {
+          auction_id: string;
+          is_completed: boolean;
+          completed_at: string | null;
+          completed_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          auction_id: string;
+          is_completed?: boolean;
+          completed_at?: string | null;
+          completed_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          is_completed?: boolean;
+          completed_at?: string | null;
+          completed_by?: string | null;
+          updated_at?: string;
+        };
+      };
       auction_managers: {
         Row: {
           auction_id: string;

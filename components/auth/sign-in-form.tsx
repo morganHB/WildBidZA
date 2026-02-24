@@ -123,7 +123,9 @@ export function SignInForm({
               />
               <button
                 type="button"
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-500"
+                className="absolute right-2 top-1/2 z-20 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-stone-500 transition hover:bg-stone-100 hover:text-stone-800"
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                onMouseDown={(event) => event.preventDefault()}
                 onClick={() => setShowPassword((value) => !value)}
               >
                 {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}

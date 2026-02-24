@@ -22,7 +22,13 @@ export const reportFiltersSchema = z.object({
   maxRows: z.number().int().min(10).max(10000).optional().default(2000),
 });
 
+export const reportFinalizationUpdateSchema = z.object({
+  auctionId: z.string().uuid(),
+  isCompleted: z.boolean(),
+});
+
 export type ReportType = z.infer<typeof reportTypeSchema>;
 export type ReportScope = z.infer<typeof reportScopeSchema>;
 export type ReportStatus = z.infer<typeof reportStatusSchema>;
 export type ReportFiltersInput = z.infer<typeof reportFiltersSchema>;
+export type ReportFinalizationUpdateInput = z.infer<typeof reportFinalizationUpdateSchema>;

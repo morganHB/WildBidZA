@@ -48,7 +48,7 @@ export function IntroReveal({ onComplete }: IntroRevealProps) {
           stage === "splitting" ? "translate-x-full" : "translate-x-0"
         } flex items-center justify-start`}
       >
-        <div className="translate-y-12 pl-4 text-left md:translate-y-20">
+        <div className="-translate-x-1 translate-y-8 pl-3 text-left md:-translate-x-2 md:translate-y-16">
           <h1 className="text-4xl font-black uppercase italic leading-none tracking-tighter text-red-700 md:text-8xl">
             .CO.ZA
           </h1>

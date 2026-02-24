@@ -3,7 +3,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   getVideoConstraints,
+  getVideoBitratePreset,
   LIVESTREAM_ICE_CONFIG,
+  type LivestreamCameraFacing,
+  type LivestreamOrientation,
   type LivestreamQualityPreset,
   toIceCandidate,
   toSessionDescription,
@@ -33,6 +36,24 @@ type LivestreamSignal = {
 
 const SIGNAL_POLL_INTERVAL_MS = 800;
 const SIGNAL_SINCE_FLOOR_ISO = "1970-01-01T00:00:00.000Z";
+const RECENT_SIGNAL_CACHE_SIZE = 500;
+
+function getViewportOrientation(): LivestreamOrientation {
+  if (typeof window === "undefined") {
+    return "landscape";
+  }
+
+  return window.innerWidth >= window.innerHeight ? "landscape" : "portrait";
+}
+
+function nextSinceCursor(lastCreatedAt: string) {
+  const timestamp = Date.parse(lastCreatedAt);
+  if (Number.isNaN(timestamp)) {
+    return lastCreatedAt;
+  }
+
+  return new Date(Math.max(0, timestamp - 1)).toISOString();
+}
 
 function toUserErrorMessage(error: unknown, fallback: string) {
   const message = error instanceof Error ? error.message : fallback;
@@ -119,19 +140,27 @@ export function useAuctionLivestreamHost({
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [session, setSession] = useState<LivestreamSession | null>(null);
   const [viewerCount, setViewerCount] = useState(0);
-  const [qualityPreset, setQualityPreset] = useState<LivestreamQualityPreset>("standard");
+  const [qualityPreset, setQualityPreset] = useState<LivestreamQualityPreset>("hd_720");
   const [audioEnabled, setAudioEnabled] = useState(true);
   const [availableCameras, setAvailableCameras] = useState<MediaDeviceInfo[]>([]);
-  const [selectedCameraId, setSelectedCameraId] = useState<string>("");
+  const [selectedCameraId, setSelectedCameraId] = useState<string>("auto");
+  const [cameraFacing, setCameraFacing] = useState<LivestreamCameraFacing>("environment");
+  const [orientation, setOrientation] = useState<LivestreamOrientation>("landscape");
+  const [effectiveQualityPreset, setEffectiveQualityPreset] = useState<LivestreamQualityPreset>("hd_720");
 
   const peersRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const sessionPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const signalPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const qualityRef = useRef<LivestreamQualityPreset>("hd_720");
+  const selectedCameraIdRef = useRef<string>("auto");
+  const cameraFacingRef = useRef<LivestreamCameraFacing>("environment");
+  const orientationRef = useRef<LivestreamOrientation>("landscape");
   const sessionRef = useRef<LivestreamSession | null>(null);
   const pendingIceCandidatesRef = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
   const sinceRef = useRef(SIGNAL_SINCE_FLOOR_ISO);
   const signalPollingRef = useRef(false);
+  const seenSignalsRef = useRef<Set<string>>(new Set());
 
   const connectionHealth = useMemo(() => {
     if (!session) {
@@ -171,6 +200,7 @@ export function useAuctionLivestreamHost({
     });
     peersRef.current.clear();
     pendingIceCandidatesRef.current.clear();
+    seenSignalsRef.current.clear();
     signalPollingRef.current = false;
     sinceRef.current = SIGNAL_SINCE_FLOOR_ISO;
   }, []);
@@ -189,6 +219,37 @@ export function useAuctionLivestreamHost({
   }, [session]);
 
   useEffect(() => {
+    qualityRef.current = qualityPreset;
+  }, [qualityPreset]);
+
+  useEffect(() => {
+    selectedCameraIdRef.current = selectedCameraId;
+  }, [selectedCameraId]);
+
+  useEffect(() => {
+    cameraFacingRef.current = cameraFacing;
+  }, [cameraFacing]);
+
+  useEffect(() => {
+    orientationRef.current = orientation;
+  }, [orientation]);
+
+  useEffect(() => {
+    const refreshOrientation = () => {
+      setOrientation(getViewportOrientation());
+    };
+
+    refreshOrientation();
+    window.addEventListener("orientationchange", refreshOrientation);
+    window.addEventListener("resize", refreshOrientation);
+
+    return () => {
+      window.removeEventListener("orientationchange", refreshOrientation);
+      window.removeEventListener("resize", refreshOrientation);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!canHost) {
       return;
     }
@@ -200,20 +261,23 @@ export function useAuctionLivestreamHost({
           (device) => device.kind === "videoinput" && Boolean(device.deviceId),
         );
         setAvailableCameras(cameras);
-
-        if (
-          (!selectedCameraId || selectedCameraId === "auto")
-          && cameras[0]?.deviceId
-        ) {
-          setSelectedCameraId(cameras[0].deviceId);
-        }
       } catch {
         // ignore
       }
     };
 
     void refreshDevices();
-  }, [canHost, selectedCameraId]);
+
+    const onDeviceChange = () => {
+      void refreshDevices();
+    };
+
+    navigator.mediaDevices.addEventListener?.("devicechange", onDeviceChange);
+
+    return () => {
+      navigator.mediaDevices.removeEventListener?.("devicechange", onDeviceChange);
+    };
+  }, [canHost]);
 
   const refreshViewerCount = useCallback(async () => {
     try {
@@ -227,6 +291,202 @@ export function useAuctionLivestreamHost({
       // Ignore transient refresh failures.
     }
   }, [auctionId]);
+
+  const resolveNetworkAdjustedQuality = useCallback((preset: LivestreamQualityPreset) => {
+    if (typeof navigator === "undefined") {
+      return preset;
+    }
+
+    const connection = (navigator as Navigator & {
+      connection?: { downlink?: number; effectiveType?: string };
+    }).connection;
+
+    if (!connection || preset !== "full_hd_1080") {
+      return preset;
+    }
+
+    const downlink = connection.downlink ?? 10;
+    const effectiveType = (connection.effectiveType ?? "").toLowerCase();
+    const lowBandwidth =
+      downlink < 5 || effectiveType.includes("2g") || effectiveType.includes("3g");
+
+    if (lowBandwidth) {
+      return "hd_720";
+    }
+
+    return preset;
+  }, []);
+
+  const buildCaptureConstraints = useCallback((options?: {
+    quality?: LivestreamQualityPreset;
+    cameraId?: string;
+    facing?: LivestreamCameraFacing;
+    orientation?: LivestreamOrientation;
+  }) => {
+    const requestedQuality = options?.quality ?? qualityRef.current;
+    const effectiveQuality = resolveNetworkAdjustedQuality(requestedQuality);
+    const cameraId = options?.cameraId ?? selectedCameraIdRef.current;
+    const cameraFacingValue = options?.facing ?? cameraFacingRef.current;
+    const orientationValue = options?.orientation ?? orientationRef.current;
+
+    return {
+      effectiveQuality,
+      constraints: getVideoConstraints(effectiveQuality, {
+        deviceId: cameraId && cameraId !== "auto" ? cameraId : undefined,
+        facingMode: cameraFacingValue,
+        orientation: orientationValue,
+      }),
+    };
+  }, [resolveNetworkAdjustedQuality]);
+
+  const applyVideoSenderProfile = useCallback(async (targetQuality: LivestreamQualityPreset) => {
+    const bitrateProfile = getVideoBitratePreset(targetQuality);
+
+    await Promise.all(
+      Array.from(peersRef.current.values()).map(async (peer) => {
+        const sender = peer.getSenders().find((item) => item.track?.kind === "video");
+        if (!sender || typeof sender.getParameters !== "function") {
+          return;
+        }
+
+        const parameters = sender.getParameters();
+        const currentEncodings = parameters.encodings && parameters.encodings.length > 0
+          ? parameters.encodings
+          : [{}];
+
+        const nextParameters: RTCRtpSendParameters = {
+          ...parameters,
+          encodings: currentEncodings.map((encoding, index) =>
+            index === 0
+              ? {
+                  ...encoding,
+                  maxBitrate: bitrateProfile.maxBitrate,
+                  maxFramerate: bitrateProfile.maxFramerate,
+                  networkPriority: "high",
+                }
+              : encoding,
+          ),
+        };
+
+        await sender.setParameters(nextParameters).catch(() => undefined);
+      }),
+    );
+  }, []);
+
+  const replaceVideoTrack = useCallback(async (options?: {
+    cameraId?: string;
+    facing?: LivestreamCameraFacing;
+    quality?: LivestreamQualityPreset;
+    orientation?: LivestreamOrientation;
+  }) => {
+    if (!streamRef.current) {
+      return;
+    }
+
+    const { constraints, effectiveQuality } = buildCaptureConstraints(options);
+    const nextVideoStream = await navigator.mediaDevices.getUserMedia({
+      video: constraints,
+      audio: false,
+    });
+    const nextVideoTrack = nextVideoStream.getVideoTracks()[0];
+
+    if (!nextVideoTrack) {
+      throw new Error("Could not access camera");
+    }
+
+    nextVideoTrack.contentHint = "motion";
+
+    const currentStream = streamRef.current;
+    const previousVideoTracks = currentStream.getVideoTracks();
+    const audioTracks = currentStream.getAudioTracks();
+    const composedStream = new MediaStream([...audioTracks, nextVideoTrack]);
+
+    let committed = false;
+    try {
+      await Promise.all(
+        Array.from(peersRef.current.values()).map(async (peer) => {
+          const sender = peer.getSenders().find((item) => item.track?.kind === "video");
+          if (sender) {
+            await sender.replaceTrack(nextVideoTrack).catch(() => undefined);
+          }
+        }),
+      );
+
+      previousVideoTracks.forEach((track) => {
+        track.stop();
+        currentStream.removeTrack(track);
+      });
+
+      streamRef.current = composedStream;
+      setLocalStream(composedStream);
+      setEffectiveQualityPreset(effectiveQuality);
+      await applyVideoSenderProfile(effectiveQuality);
+      committed = true;
+    } finally {
+      if (!committed) {
+        nextVideoStream.getTracks().forEach((track) => track.stop());
+      } else {
+        nextVideoStream
+          .getTracks()
+          .filter((track) => track.id !== nextVideoTrack.id)
+          .forEach((track) => track.stop());
+      }
+    }
+  }, [applyVideoSenderProfile, buildCaptureConstraints]);
+
+  const applyTrackConstraints = useCallback(async () => {
+    const stream = streamRef.current;
+    const videoTrack = stream?.getVideoTracks()[0];
+    if (!videoTrack) {
+      return;
+    }
+
+    const { constraints, effectiveQuality } = buildCaptureConstraints();
+    const trackConstraints: MediaTrackConstraints = { ...constraints };
+    delete trackConstraints.deviceId;
+    delete trackConstraints.facingMode;
+
+    await videoTrack.applyConstraints(trackConstraints).catch(() => undefined);
+    setEffectiveQualityPreset(effectiveQuality);
+    await applyVideoSenderProfile(effectiveQuality);
+  }, [applyVideoSenderProfile, buildCaptureConstraints]);
+
+  const switchToCamera = useCallback(async (cameraId: string) => {
+    selectedCameraIdRef.current = cameraId;
+    setSelectedCameraId(cameraId);
+    setError(null);
+
+    if (status !== "live" || !streamRef.current) {
+      return;
+    }
+
+    try {
+      await replaceVideoTrack({ cameraId, facing: cameraFacingRef.current });
+    } catch (cameraError) {
+      setError(toUserErrorMessage(cameraError, "Failed to switch camera"));
+    }
+  }, [replaceVideoTrack, status]);
+
+  const flipCameraFacing = useCallback(async () => {
+    const nextFacing: LivestreamCameraFacing =
+      cameraFacingRef.current === "environment" ? "user" : "environment";
+
+    cameraFacingRef.current = nextFacing;
+    selectedCameraIdRef.current = "auto";
+    setCameraFacing(nextFacing);
+    setSelectedCameraId("auto");
+    setError(null);
+
+    if (status !== "live" || !streamRef.current) {
+      return;
+    }
+
+    try {
+      await replaceVideoTrack({ cameraId: "auto", facing: nextFacing });
+    } catch (cameraError) {
+      setError(toUserErrorMessage(cameraError, "Failed to flip camera"));
+    }
+  }, [replaceVideoTrack, status]);
 
   const processSignal = useCallback(async (liveSession: LivestreamSession, signal: LivestreamSignal) => {
     if (!streamRef.current) {
@@ -252,6 +512,7 @@ export function useAuctionLivestreamHost({
       streamRef.current.getTracks().forEach((track) => {
         peer?.addTrack(track, streamRef.current as MediaStream);
       });
+      void applyVideoSenderProfile(effectiveQualityPreset).catch(() => undefined);
 
       peer.onicecandidate = (event) => {
         if (!event.candidate) {
@@ -323,7 +584,7 @@ export function useAuctionLivestreamHost({
         }
       }
     }
-  }, [auctionId, userId]);
+  }, [applyVideoSenderProfile, auctionId, effectiveQualityPreset, userId]);
 
   const startSignalPolling = useCallback((liveSession: LivestreamSession) => {
     const poll = async () => {
@@ -341,8 +602,32 @@ export function useAuctionLivestreamHost({
         });
 
         if (signals.length > 0) {
-          sinceRef.current = signals[signals.length - 1]?.created_at ?? sinceRef.current;
-          for (const signal of signals) {
+          const lastCreatedAt = signals[signals.length - 1]?.created_at;
+          if (lastCreatedAt) {
+            sinceRef.current = nextSinceCursor(lastCreatedAt);
+          }
+
+          const unseenSignals = signals.filter((signal) => {
+            if (seenSignalsRef.current.has(signal.id)) {
+              return false;
+            }
+            seenSignalsRef.current.add(signal.id);
+            return true;
+          });
+
+          if (seenSignalsRef.current.size > RECENT_SIGNAL_CACHE_SIZE) {
+            const excess = seenSignalsRef.current.size - RECENT_SIGNAL_CACHE_SIZE;
+            const iterator = seenSignalsRef.current.values();
+            for (let index = 0; index < excess; index += 1) {
+              const item = iterator.next();
+              if (item.done) {
+                break;
+              }
+              seenSignalsRef.current.delete(item.value);
+            }
+          }
+
+          for (const signal of unseenSignals) {
             await processSignal(liveSession, signal);
           }
         }
@@ -371,26 +656,29 @@ export function useAuctionLivestreamHost({
     setError(null);
 
     try {
+      const { constraints, effectiveQuality } = buildCaptureConstraints();
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: getVideoConstraints(
-          qualityPreset,
-          selectedCameraId && selectedCameraId !== "auto" ? selectedCameraId : undefined,
-        ),
+        video: constraints,
         audio: audioEnabled,
+      });
+      stream.getVideoTracks().forEach((track) => {
+        track.contentHint = "motion";
       });
 
       streamRef.current = stream;
       setLocalStream(stream);
+      setEffectiveQualityPreset(effectiveQuality);
 
       const payload = (await postJson(`/api/seller/auctions/${auctionId}/livestream/start`, {
         audio_enabled: audioEnabled,
-        max_viewers: 30,
+        max_viewers: 100,
       })) as { ok: true; data: LivestreamSession };
 
       const liveSession = payload.data;
       setSession(liveSession);
       setStatus("live");
       sinceRef.current = SIGNAL_SINCE_FLOOR_ISO;
+      seenSignalsRef.current.clear();
 
       startSignalPolling(liveSession);
 
@@ -409,11 +697,10 @@ export function useAuctionLivestreamHost({
   }, [
     auctionId,
     audioEnabled,
+    buildCaptureConstraints,
     canHost,
     cleanupConnections,
-    qualityPreset,
     refreshViewerCount,
-    selectedCameraId,
     startSignalPolling,
     status,
     stopTracks,
@@ -453,6 +740,53 @@ export function useAuctionLivestreamHost({
     }
   }, []);
 
+  const updateQualityPreset = useCallback((preset: LivestreamQualityPreset) => {
+    setQualityPreset(preset);
+    setError(null);
+  }, []);
+
+  useEffect(() => {
+    setEffectiveQualityPreset(resolveNetworkAdjustedQuality(qualityPreset));
+    if (status !== "live") {
+      return;
+    }
+
+    void applyTrackConstraints();
+  }, [applyTrackConstraints, qualityPreset, resolveNetworkAdjustedQuality, status]);
+
+  useEffect(() => {
+    if (status !== "live") {
+      return;
+    }
+
+    void applyTrackConstraints();
+  }, [applyTrackConstraints, orientation, status]);
+
+  useEffect(() => {
+    const connection = (navigator as Navigator & {
+      connection?: {
+        addEventListener?: (type: "change", listener: () => void) => void;
+        removeEventListener?: (type: "change", listener: () => void) => void;
+      };
+    }).connection;
+
+    if (!connection?.addEventListener) {
+      return;
+    }
+
+    const onConnectionChange = () => {
+      setEffectiveQualityPreset(resolveNetworkAdjustedQuality(qualityRef.current));
+      if (status === "live") {
+        void applyTrackConstraints();
+      }
+    };
+
+    connection.addEventListener("change", onConnectionChange);
+    return () => {
+      connection.removeEventListener?.("change", onConnectionChange);
+    };
+  }, [applyTrackConstraints, resolveNetworkAdjustedQuality, status]);
+
   useEffect(() => {
     if (!session) {
       return;
@@ -488,12 +822,16 @@ export function useAuctionLivestreamHost({
     session,
     viewerCount,
     qualityPreset,
-    setQualityPreset,
+    effectiveQualityPreset,
+    setQualityPreset: updateQualityPreset,
     audioEnabled,
     toggleMic,
     availableCameras,
     selectedCameraId,
-    setSelectedCameraId,
+    setSelectedCameraId: switchToCamera,
+    cameraFacing,
+    flipCameraFacing,
+    orientation,
     start,
     stop,
     connectionHealth,

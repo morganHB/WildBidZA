@@ -42,8 +42,15 @@ export function LivestreamViewerModal({ auctionId, userId, open, onOpenChange }:
           <p className="text-xs text-slate-500">Active viewers: {viewerCount}</p>
         </DialogHeader>
 
-        <div className="relative bg-black">
-          <video ref={videoRef} autoPlay playsInline controls muted className="aspect-video w-full" />
+        <div className="relative flex items-center justify-center bg-black">
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            controls
+            muted
+            className="h-[70vh] w-full max-h-[80vh] bg-black object-contain"
+          />
 
           {status === "connecting" ? (
             <div className="absolute inset-0 flex items-center justify-center bg-black/65">

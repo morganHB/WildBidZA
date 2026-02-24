@@ -34,6 +34,16 @@ type LivestreamSignal = {
 const GUEST_PARTICIPANT_KEY = "wildbid_guest_livestream_participant_id";
 const SIGNAL_POLL_INTERVAL_MS = 800;
 const SIGNAL_SINCE_FLOOR_ISO = "1970-01-01T00:00:00.000Z";
+const RECENT_SIGNAL_CACHE_SIZE = 500;
+
+function nextSinceCursor(lastCreatedAt: string) {
+  const timestamp = Date.parse(lastCreatedAt);
+  if (Number.isNaN(timestamp)) {
+    return lastCreatedAt;
+  }
+
+  return new Date(Math.max(0, timestamp - 1)).toISOString();
+}
 
 function isUuid(value: string | null | undefined) {
   if (!value) {
@@ -127,6 +137,7 @@ export function useAuctionLivestreamViewer({
   const connectedRef = useRef(false);
   const sinceRef = useRef(SIGNAL_SINCE_FLOOR_ISO);
   const pollingRef = useRef(false);
+  const seenSignalsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (userId && isUuid(userId)) {
@@ -191,6 +202,7 @@ export function useAuctionLivestreamViewer({
     connectedRef.current = false;
     sinceRef.current = SIGNAL_SINCE_FLOOR_ISO;
     pollingRef.current = false;
+    seenSignalsRef.current.clear();
     setSessionId(null);
   }, [auctionId, participantId]);
 
@@ -264,8 +276,32 @@ export function useAuctionLivestreamViewer({
         });
 
         if (signals.length > 0) {
-          sinceRef.current = signals[signals.length - 1]?.created_at ?? sinceRef.current;
-          await processSignals(signals);
+          const lastCreatedAt = signals[signals.length - 1]?.created_at;
+          if (lastCreatedAt) {
+            sinceRef.current = nextSinceCursor(lastCreatedAt);
+          }
+
+          const unseenSignals = signals.filter((signal) => {
+            if (seenSignalsRef.current.has(signal.id)) {
+              return false;
+            }
+            seenSignalsRef.current.add(signal.id);
+            return true;
+          });
+
+          if (seenSignalsRef.current.size > RECENT_SIGNAL_CACHE_SIZE) {
+            const excess = seenSignalsRef.current.size - RECENT_SIGNAL_CACHE_SIZE;
+            const iterator = seenSignalsRef.current.values();
+            for (let index = 0; index < excess; index += 1) {
+              const item = iterator.next();
+              if (item.done) {
+                break;
+              }
+              seenSignalsRef.current.delete(item.value);
+            }
+          }
+
+          await processSignals(unseenSignals);
         }
       } catch {
         // Ignore transient polling failures.
@@ -297,6 +333,7 @@ export function useAuctionLivestreamViewer({
         setViewerCount(joined.viewer_count ?? 0);
         connectedRef.current = false;
         sinceRef.current = SIGNAL_SINCE_FLOOR_ISO;
+        seenSignalsRef.current.clear();
 
         const pc = new RTCPeerConnection(LIVESTREAM_ICE_CONFIG);
         pcRef.current = pc;

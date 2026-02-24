@@ -3,7 +3,6 @@ import Image from "next/image";
 import { CircleUserRound, LayoutDashboard, Menu, X } from "lucide-react";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { isAdmin, isApprovedSeller } from "@/lib/auth/roles";
-import { APP_NAME } from "@/lib/constants/app";
 import { getUnreadNotificationCount } from "@/lib/notifications/service";
 import { Button } from "@/components/ui/button";
 import { NotificationBell } from "@/components/layout/notification-bell";
@@ -42,9 +41,9 @@ export async function SiteHeader() {
             <span className="relative h-10 w-10 overflow-hidden rounded-xl border border-stone-300/70 bg-white">
               <Image src="/noordkaap_logo_transparent.png" alt="Noordkaap logo" fill sizes="40px" className="object-contain p-1" />
             </span>
-            <span className="text-lg font-black uppercase italic tracking-tight text-stone-900 sm:text-xl">
-              {APP_NAME.split(" ")[0]}
-              <span className="text-red-700">.</span>
+            <span className="text-sm font-black uppercase italic leading-tight tracking-tight text-stone-900 sm:text-base">
+              Lewendehawe
+              <span className="ml-1 text-red-700">Noordkaap</span>
             </span>
           </Link>
 

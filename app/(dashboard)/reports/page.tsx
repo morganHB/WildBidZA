@@ -3,20 +3,14 @@ import { redirect } from "next/navigation";
 import { Download, FileSpreadsheet, Filter } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { ReportResultsPanel } from "@/components/reports/report-results-panel";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { requireAuthPage } from "@/lib/auth/guard";
 import { isAdmin, isApprovedSeller } from "@/lib/auth/roles";
 import { SOUTH_AFRICA_PROVINCES } from "@/lib/constants/provinces";
 import {
+  getReportChecklistItems,
   getSellerReportData,
   REPORT_SCOPE_OPTIONS,
   REPORT_STATUS_OPTIONS,
@@ -71,6 +65,12 @@ export default async function ReportsPage({
       filters,
     }),
   ]);
+
+  const checklistItems = await getReportChecklistItems({
+    userId: user.id,
+    isAdmin: isAdmin(profile),
+    filters,
+  });
 
   const csvParams = new URLSearchParams();
   csvParams.set("reportType", filters.reportType);
@@ -229,57 +229,7 @@ export default async function ReportsPage({
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">{report.title}</CardTitle>
-          <CardDescription>{report.description}</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-            {report.summary.map((item) => (
-              <div key={item.label} className="rounded-xl border border-slate-200 p-3 dark:border-slate-800">
-                <p className="text-xs uppercase tracking-wide text-slate-500">{item.label}</p>
-                <p className="mt-2 text-lg font-semibold">{item.value}</p>
-              </div>
-            ))}
-          </div>
-
-          <p className="text-xs text-slate-500">
-            Generated at {new Date(report.generatedAt).toLocaleString("en-ZA", { timeZone: "Africa/Johannesburg" })}
-          </p>
-
-          {report.rows.length === 0 ? (
-            <div className="rounded-xl border border-slate-200 p-5 text-sm text-slate-500 dark:border-slate-800">
-              No rows found for the selected report and filters.
-            </div>
-          ) : (
-            <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    {report.columns.map((column) => (
-                      <TableHead key={column.key}>{column.label}</TableHead>
-                    ))}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {report.rows.map((row, rowIndex) => (
-                    <TableRow key={`${rowIndex}-${String(row[report.columns[0]?.key] ?? rowIndex)}`}>
-                      {report.columns.map((column) => (
-                        <TableCell key={`${rowIndex}-${column.key}`}>
-                          {row[column.key] === null || row[column.key] === undefined || row[column.key] === ""
-                            ? "-"
-                            : String(row[column.key])}
-                        </TableCell>
-                      ))}
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <ReportResultsPanel report={report} initialChecklistItems={checklistItems} />
     </div>
   );
 }
