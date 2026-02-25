@@ -214,15 +214,9 @@ export function useAuctionLivestreamViewer({
 
     if (sendLeave && leaveSessionRef.current && participantId) {
       const leavingSession = leaveSessionRef.current;
-      if (hostUserRef.current) {
-        void postJson(`/api/auctions/${auctionId}/livestream/signal`, {
-          session_id: leavingSession,
-          participant_id: participantId,
-          to_user_id: hostUserRef.current,
-          signal_type: "leave",
-          payload: {},
-        }).catch(() => undefined);
-      }
+
+      // Avoid race conditions where an old "leave" arrives after a fast re-join
+      // and tears down an active connection on the host side.
       void postJson(`/api/auctions/${auctionId}/livestream/leave`, {
         session_id: leavingSession,
         participant_id: participantId,
@@ -455,11 +449,12 @@ export function useAuctionLivestreamViewer({
             return;
           }
 
-          if (
+          const isConnected =
             pc.connectionState === "connected"
             || pc.iceConnectionState === "connected"
-            || pc.iceConnectionState === "completed"
-          ) {
+            || pc.iceConnectionState === "completed";
+
+          if (isConnected) {
             if ((remoteStreamRef.current?.getTracks().length ?? 0) > 0) {
               connectedRef.current = true;
               if (connectTimeoutRef.current) {
@@ -472,7 +467,16 @@ export function useAuctionLivestreamViewer({
             return;
           }
 
-          if (!connectedRef.current && (pc.connectionState === "failed" || pc.connectionState === "closed")) {
+          const hardFailure =
+            pc.connectionState === "failed"
+            || pc.connectionState === "closed"
+            || pc.iceConnectionState === "failed";
+
+          const droppedAfterLive =
+            connectedRef.current
+            && (pc.connectionState === "disconnected" || pc.iceConnectionState === "disconnected");
+
+          if (hardFailure || droppedAfterLive) {
             handleConnectionFailure(
               new Error("Unable to establish livestream connection. Reconnecting..."),
               "Unable to establish livestream connection.",

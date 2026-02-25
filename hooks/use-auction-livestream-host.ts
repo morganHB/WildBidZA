@@ -495,28 +495,30 @@ export function useAuctionLivestreamHost({
       return;
     }
 
-    if (signal.signal_type === "leave") {
-      const leavingViewerId = signal.from_user_id;
-      const peer = peersRef.current.get(leavingViewerId);
-      if (peer) {
-        peer.close();
-        peersRef.current.delete(leavingViewerId);
+    const closeViewerPeer = (viewerId: string) => {
+      const existing = peersRef.current.get(viewerId);
+      if (existing) {
+        existing.onicecandidate = null;
+        existing.onconnectionstatechange = null;
+        existing.close();
+        peersRef.current.delete(viewerId);
       }
-      pendingIceCandidatesRef.current.delete(leavingViewerId);
-      return;
-    }
+      pendingIceCandidatesRef.current.delete(viewerId);
+    };
 
-    const viewerId = signal.from_user_id;
-    let peer = peersRef.current.get(viewerId);
+    const ensureViewerPeer = (viewerId: string) => {
+      const existing = peersRef.current.get(viewerId);
+      if (existing) {
+        return existing;
+      }
 
-    if (!peer) {
-      peer = new RTCPeerConnection(LIVESTREAM_ICE_CONFIG);
-      streamRef.current.getTracks().forEach((track) => {
-        peer?.addTrack(track, streamRef.current as MediaStream);
+      const nextPeer = new RTCPeerConnection(LIVESTREAM_ICE_CONFIG);
+      streamRef.current?.getTracks().forEach((track) => {
+        nextPeer.addTrack(track, streamRef.current as MediaStream);
       });
       void applyVideoSenderProfile(effectiveQualityPreset).catch(() => undefined);
 
-      peer.onicecandidate = (event) => {
+      nextPeer.onicecandidate = (event) => {
         if (!event.candidate) {
           return;
         }
@@ -530,19 +532,23 @@ export function useAuctionLivestreamHost({
         }).catch(() => undefined);
       };
 
-      peer.onconnectionstatechange = () => {
-        if (!peer) {
-          return;
-        }
-
-        if (peer.connectionState === "failed" || peer.connectionState === "closed") {
-          peersRef.current.delete(viewerId);
-          pendingIceCandidatesRef.current.delete(viewerId);
+      nextPeer.onconnectionstatechange = () => {
+        if (nextPeer.connectionState === "failed" || nextPeer.connectionState === "closed") {
+          closeViewerPeer(viewerId);
         }
       };
 
-      peersRef.current.set(viewerId, peer);
+      peersRef.current.set(viewerId, nextPeer);
+      return nextPeer;
+    };
+
+    if (signal.signal_type === "leave") {
+      closeViewerPeer(signal.from_user_id);
+      return;
     }
+
+    const viewerId = signal.from_user_id;
+    let peer = peersRef.current.get(viewerId);
 
     if (signal.signal_type === "offer") {
       const offer = toSessionDescription(signal.payload);
@@ -550,6 +556,9 @@ export function useAuctionLivestreamHost({
         return;
       }
 
+      // Always renegotiate from a fresh peer for each offer to avoid stale state across rapid re-joins.
+      closeViewerPeer(viewerId);
+      peer = ensureViewerPeer(viewerId);
       await peer.setRemoteDescription(offer);
       const queued = pendingIceCandidatesRef.current.get(viewerId) ?? [];
       if (queued.length > 0) {
@@ -577,6 +586,10 @@ export function useAuctionLivestreamHost({
     if (signal.signal_type === "ice_candidate") {
       const candidate = toIceCandidate(signal.payload);
       if (candidate) {
+        if (!peer) {
+          peer = ensureViewerPeer(viewerId);
+        }
+
         if (peer.currentRemoteDescription) {
           await peer.addIceCandidate(candidate).catch(() => undefined);
         } else {
@@ -630,7 +643,12 @@ export function useAuctionLivestreamHost({
           }
 
           for (const signal of unseenSignals) {
-            await processSignal(liveSession, signal);
+            try {
+              await processSignal(liveSession, signal);
+            } catch {
+              // Keep polling alive even if a single viewer's handshake is invalid/stale.
+              pendingIceCandidatesRef.current.delete(signal.from_user_id);
+            }
           }
         }
       } catch {
