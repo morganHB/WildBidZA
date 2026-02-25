@@ -38,6 +38,8 @@ const RECENT_SIGNAL_CACHE_SIZE = 500;
 const CONNECT_TIMEOUT_MS = 40_000;
 const RECONNECT_BASE_DELAY_MS = 1_500;
 const RECONNECT_MAX_DELAY_MS = 10_000;
+const STATS_CHECK_INTERVAL_MS = 5_000;
+const STALLED_VIDEO_THRESHOLD_CHECKS = 3;
 
 function nextSinceCursor(lastCreatedAt: string) {
   const timestamp = Date.parse(lastCreatedAt);
@@ -156,6 +158,7 @@ export function useAuctionLivestreamViewer({
   const signalPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const connectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const statsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const leaveSessionRef = useRef<string | null>(null);
   const hostUserRef = useRef<string | null>(null);
   const remoteStreamRef = useRef<MediaStream | null>(null);
@@ -165,6 +168,8 @@ export function useAuctionLivestreamViewer({
   const sinceRef = useRef(SIGNAL_SINCE_FLOOR_ISO);
   const pollingRef = useRef(false);
   const seenSignalsRef = useRef<Set<string>>(new Set());
+  const lastVideoBytesRef = useRef<number | null>(null);
+  const stalledVideoChecksRef = useRef(0);
 
   useEffect(() => {
     setParticipantId(getViewerParticipantId());
@@ -189,6 +194,11 @@ export function useAuctionLivestreamViewer({
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
+    }
+
+    if (statsIntervalRef.current) {
+      clearInterval(statsIntervalRef.current);
+      statsIntervalRef.current = null;
     }
 
     if (pcRef.current) {
@@ -224,6 +234,8 @@ export function useAuctionLivestreamViewer({
     sinceRef.current = SIGNAL_SINCE_FLOOR_ISO;
     pollingRef.current = false;
     seenSignalsRef.current.clear();
+    lastVideoBytesRef.current = null;
+    stalledVideoChecksRef.current = 0;
     setSessionId(null);
   }, [auctionId, participantId]);
 
@@ -419,6 +431,8 @@ export function useAuctionLivestreamViewer({
             connectTimeoutRef.current = null;
           }
           retryAttemptRef.current = 0;
+          lastVideoBytesRef.current = null;
+          stalledVideoChecksRef.current = 0;
           setError(null);
           setRemoteStream(new MediaStream(inboundStream.getTracks()));
           setStatus("live");
@@ -499,6 +513,44 @@ export function useAuctionLivestreamViewer({
           void pollSignals();
         }, SIGNAL_POLL_INTERVAL_MS);
         void pollSignals();
+
+        statsIntervalRef.current = setInterval(() => {
+          const activePc = pcRef.current;
+          if (!activePc || !connectedRef.current) {
+            return;
+          }
+
+          void activePc.getStats().then((stats) => {
+            let currentVideoBytes: number | null = null;
+            stats.forEach((report) => {
+              if (
+                report.type === "inbound-rtp"
+                && (report as RTCInboundRtpStreamStats).kind === "video"
+              ) {
+                const bytes = (report as RTCInboundRtpStreamStats).bytesReceived ?? 0;
+                currentVideoBytes = Math.max(currentVideoBytes ?? 0, bytes);
+              }
+            });
+
+            if (currentVideoBytes === null) {
+              return;
+            }
+
+            if (lastVideoBytesRef.current === null || currentVideoBytes > lastVideoBytesRef.current) {
+              lastVideoBytesRef.current = currentVideoBytes;
+              stalledVideoChecksRef.current = 0;
+              return;
+            }
+
+            stalledVideoChecksRef.current += 1;
+            if (stalledVideoChecksRef.current >= STALLED_VIDEO_THRESHOLD_CHECKS) {
+              handleConnectionFailure(
+                new Error("Video feed stalled. Reconnecting..."),
+                "Video feed stalled.",
+              );
+            }
+          }).catch(() => undefined);
+        }, STATS_CHECK_INTERVAL_MS);
 
         connectTimeoutRef.current = setTimeout(() => {
           if (connectedRef.current) {
