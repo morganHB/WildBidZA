@@ -38,6 +38,7 @@ const SIGNAL_POLL_INTERVAL_MS = 800;
 const SIGNAL_SINCE_FLOOR_ISO = "1970-01-01T00:00:00.000Z";
 const RECENT_SIGNAL_CACHE_SIZE = 500;
 const DEFAULT_MAX_VIEWERS = 250;
+const LEGACY_MAX_VIEWERS = 100;
 
 function getViewportOrientation(): LivestreamOrientation {
   if (typeof window === "undefined") {
@@ -670,10 +671,28 @@ export function useAuctionLivestreamHost({
       setLocalStream(stream);
       setEffectiveQualityPreset(effectiveQuality);
 
-      const payload = (await postJson(`/api/seller/auctions/${auctionId}/livestream/start`, {
-        audio_enabled: audioEnabled,
-        max_viewers: DEFAULT_MAX_VIEWERS,
-      })) as { ok: true; data: LivestreamSession };
+      let payload: { ok: true; data: LivestreamSession };
+      try {
+        payload = (await postJson(`/api/seller/auctions/${auctionId}/livestream/start`, {
+          audio_enabled: audioEnabled,
+          max_viewers: DEFAULT_MAX_VIEWERS,
+        })) as { ok: true; data: LivestreamSession };
+      } catch (startRequestError) {
+        const fallbackMessage =
+          startRequestError instanceof Error ? startRequestError.message.toLowerCase() : "";
+        const canFallback =
+          fallbackMessage.includes("max_viewers")
+          && fallbackMessage.includes("between 1 and 100");
+
+        if (!canFallback) {
+          throw startRequestError;
+        }
+
+        payload = (await postJson(`/api/seller/auctions/${auctionId}/livestream/start`, {
+          audio_enabled: audioEnabled,
+          max_viewers: LEGACY_MAX_VIEWERS,
+        })) as { ok: true; data: LivestreamSession };
+      }
 
       const liveSession = payload.data;
       setSession(liveSession);
