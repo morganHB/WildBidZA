@@ -8,7 +8,6 @@ import { Eye, EyeOff, LoaderCircle } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { buildBrowserRedirectUrl } from "@/lib/auth/redirect";
 import { signUpSchema, type SignUpInput } from "@/lib/validation/auth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -60,48 +59,37 @@ export function SignUpForm({
 
   const onSubmit = form.handleSubmit(async (values) => {
     const supabase = createSupabaseBrowserClient();
-    const callbackQuery = new URLSearchParams({ next: safeNextPath });
-    const redirectTo = buildBrowserRedirectUrl(`/auth/callback?${callbackQuery.toString()}`);
-
-    const { data, error } = await supabase.auth.signUp({
-      email: values.email,
-      password: values.password,
-      options: {
-        emailRedirectTo: redirectTo,
-        data: {
-          display_name: values.displayName,
-          phone: values.phone,
-          id_number: values.idNumber,
-          popia_consent: values.popiaConsent,
-          terms_accepted: values.termsAccepted,
-        },
+    const signupResponse = await fetch("/api/auth/sign-up", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
       },
+      body: JSON.stringify(values),
     });
+    const signupPayload = (await signupResponse.json().catch(() => ({ ok: false, error: "Failed to create account" }))) as {
+      ok: boolean;
+      error?: string;
+    };
 
-    if (error) {
-      toast.error(error.message);
+    if (!signupResponse.ok || !signupPayload.ok) {
+      toast.error(signupPayload.error ?? "Failed to create account");
       return;
     }
 
-    if (data.user && data.session) {
-      await fetch("/api/profile", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          display_name: values.displayName,
-          phone: values.phone,
-          id_number: values.idNumber,
-        }),
-      }).catch(() => undefined);
+    const { error: signInError } = await supabase.auth.signInWithPassword({
+      email: values.email.trim().toLowerCase(),
+      password: values.password,
+    });
 
-      toast.success("Account created. Complete your profile while waiting for approval.");
-      router.push(safeNextPath);
+    if (signInError) {
+      toast.success("Account created. You can sign in now while waiting for admin approval.");
+      router.push(`/sign-in${intentQuery}`);
       router.refresh();
       return;
     }
 
-    toast.success("Account created. Check your email and confirm your account, then sign in.");
-    router.push(`/sign-in?verify=1${intentQuery ? `&${intentQuery.slice(1)}` : ""}`);
+    toast.success("Account created. Await admin approval before bidding.");
+    router.push(safeNextPath);
     router.refresh();
   });
 
