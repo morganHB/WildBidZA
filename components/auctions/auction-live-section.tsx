@@ -53,7 +53,10 @@ export function AuctionLiveSection({
     router.refresh();
   }, [router]);
 
-  useRealtimeAuction(auctionId, handleRefresh);
+  useRealtimeAuction(auctionId, handleRefresh, {
+    enabled: status === "live",
+    pollIntervalMs: 3000,
+  });
 
   return (
     <div className="space-y-6">

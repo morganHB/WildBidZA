@@ -63,6 +63,11 @@ export function PlaceBidForm({
     setAutoBidMax(currentAutoBidMax ?? currentPrice + minIncrement);
   }, [currentAutoBidMax, currentPrice, minIncrement]);
 
+  useEffect(() => {
+    const minimumBid = currentPrice + minIncrement;
+    setAmount((previous) => (Number.isFinite(previous) && previous >= minimumBid ? previous : minimumBid));
+  }, [currentPrice, minIncrement]);
+
   const submitBid = async () => {
     if (!isAuthenticated) {
       toast.error("You must log in to bid");
@@ -303,7 +308,7 @@ export function PlaceBidForm({
           ? "This packet will open after the previous packet closes."
           : isWinning
             ? "You are currently winning"
-            : "Live bids update instantly"}
+            : "Live bids sync automatically"}
       </p>
     </div>
   );

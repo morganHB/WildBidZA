@@ -43,8 +43,8 @@ export async function SiteHeader() {
               <Image src="/noordkaap_logo_transparent.png" alt="Noordkaap logo" fill sizes="40px" className="object-contain p-1" />
             </span>
             <span className="text-sm font-black uppercase italic leading-tight tracking-tight text-stone-900 sm:text-base">
-              Lewendehawe
-              <span className="ml-1 text-red-700">Noordkaap</span>
+              Noordkaap
+              <span className="ml-1 text-red-700">Lewende Hawe</span>
             </span>
           </Link>
 
