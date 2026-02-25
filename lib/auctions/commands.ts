@@ -12,6 +12,13 @@ import type {
   StartLivestreamInput,
 } from "@/lib/validation/livestream";
 import type { SettingsUpdateInput } from "@/lib/validation/settings";
+import {
+  createMuxLiveStream,
+  disableMuxLiveStream,
+  isMuxConfigured,
+  retrieveMuxLiveStream,
+  toMuxPlaybackUrl,
+} from "@/lib/livestream/mux";
 
 async function canManageAuction(
   supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
@@ -487,6 +494,10 @@ export async function startLivestream(params: {
     throw new Error("Not authorized to start livestream");
   }
 
+  if (!isMuxConfigured()) {
+    throw new Error("Mux is not configured. Set MUX_TOKEN_ID and MUX_TOKEN_SECRET.");
+  }
+
   const { data, error } = await supabase.rpc("start_livestream", {
     p_auction_id: params.auctionId,
     p_audio_enabled: params.payload.audio_enabled ?? true,
@@ -497,7 +508,110 @@ export async function startLivestream(params: {
     throw new Error(error.message);
   }
 
-  return data;
+  const sessionId = (data as { session_id?: string } | null)?.session_id;
+  if (!sessionId) {
+    throw new Error("Livestream session was created without a session ID");
+  }
+
+  try {
+    const admin = createSupabaseAdminClient() as any;
+    const { data: sessionRow, error: sessionError } = await admin
+      .from("auction_livestream_sessions")
+      .select("id,mux_live_stream_id,mux_playback_id,mux_stream_key,mux_ingest_url,mux_latency_mode")
+      .eq("id", sessionId)
+      .maybeSingle();
+
+    if (sessionError) {
+      throw new Error(sessionError.message);
+    }
+
+    if (!sessionRow) {
+      throw new Error("Livestream session could not be loaded");
+    }
+
+    let muxLiveStreamId = sessionRow.mux_live_stream_id as string | null;
+    let muxPlaybackId = sessionRow.mux_playback_id as string | null;
+    let muxStreamKey = sessionRow.mux_stream_key as string | null;
+    let muxIngestUrl = sessionRow.mux_ingest_url as string | null;
+    const muxLatencyMode = (sessionRow.mux_latency_mode as string | null) ?? "reduced";
+
+    if (muxLiveStreamId && (!muxPlaybackId || !muxStreamKey || !muxIngestUrl)) {
+      try {
+        const recovered = await retrieveMuxLiveStream(muxLiveStreamId);
+        muxPlaybackId = recovered.playbackId;
+        muxStreamKey = recovered.streamKey;
+        muxIngestUrl =
+          muxIngestUrl ?? process.env.MUX_RTMP_INGEST_URL?.trim() ?? "rtmp://global-live.mux.com:5222/app";
+      } catch {
+        muxLiveStreamId = null;
+        muxPlaybackId = null;
+        muxStreamKey = null;
+        muxIngestUrl = null;
+      }
+    }
+
+    if (!muxLiveStreamId || !muxPlaybackId || !muxStreamKey || !muxIngestUrl) {
+      const createdMux = await createMuxLiveStream({
+        latencyMode: "reduced",
+        passthrough: params.auctionId,
+      });
+
+      muxLiveStreamId = createdMux.liveStreamId;
+      muxPlaybackId = createdMux.playbackId;
+      muxStreamKey = createdMux.streamKey;
+      muxIngestUrl = createdMux.ingestUrl;
+
+      const { error: updateError } = await admin
+        .from("auction_livestream_sessions")
+        .update({
+          mux_live_stream_id: muxLiveStreamId,
+          mux_playback_id: muxPlaybackId,
+          mux_stream_key: muxStreamKey,
+          mux_ingest_url: muxIngestUrl,
+          mux_latency_mode: "reduced",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", sessionId);
+
+      if (updateError) {
+        throw new Error(updateError.message);
+      }
+    } else {
+      const { error: updateError } = await admin
+        .from("auction_livestream_sessions")
+        .update({
+          mux_playback_id: muxPlaybackId,
+          mux_stream_key: muxStreamKey,
+          mux_ingest_url: muxIngestUrl,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", sessionId);
+
+      if (updateError) {
+        throw new Error(updateError.message);
+      }
+    }
+
+    return {
+      ...(data as Record<string, unknown>),
+      mux_live_stream_id: muxLiveStreamId,
+      mux_playback_id: muxPlaybackId,
+      mux_stream_key: muxStreamKey,
+      mux_ingest_url: muxIngestUrl,
+      mux_latency_mode: muxLatencyMode,
+      playback_url: muxPlaybackId ? toMuxPlaybackUrl(muxPlaybackId) : null,
+    };
+  } catch (muxError) {
+    try {
+      await supabase.rpc("stop_livestream", {
+        p_auction_id: params.auctionId,
+      });
+    } catch {
+      // Ignore rollback failures.
+    }
+
+    throw muxError instanceof Error ? muxError : new Error("Failed to initialize Mux livestream");
+  }
 }
 
 export async function stopLivestream(params: { auctionId: string; actorId: string }) {
@@ -506,6 +620,29 @@ export async function stopLivestream(params: { auctionId: string; actorId: strin
 
   if (!allowed) {
     throw new Error("Not authorized to stop livestream");
+  }
+
+  const admin = createSupabaseAdminClient() as any;
+  const { data: activeSession, error: activeSessionError } = await admin
+    .from("auction_livestream_sessions")
+    .select("id,mux_live_stream_id")
+    .eq("auction_id", params.auctionId)
+    .eq("is_live", true)
+    .is("ended_at", null)
+    .order("started_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (activeSessionError) {
+    throw new Error(activeSessionError.message);
+  }
+
+  if (activeSession?.mux_live_stream_id && isMuxConfigured()) {
+    try {
+      await disableMuxLiveStream(activeSession.mux_live_stream_id);
+    } catch {
+      // Do not block stop requests if the provider already ended or invalidated this stream.
+    }
   }
 
   const { data, error } = await supabase.rpc("stop_livestream", {

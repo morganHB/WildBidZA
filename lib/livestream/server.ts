@@ -44,7 +44,9 @@ export async function loadLiveSessionByAuction(auctionId: string) {
   const admin = createSupabaseAdminClient() as any;
   const { data, error } = await admin
     .from("auction_livestream_sessions")
-    .select("id,auction_id,host_user_id,is_live,started_at,ended_at,audio_enabled,max_viewers,created_at,updated_at")
+    .select(
+      "id,auction_id,host_user_id,is_live,started_at,ended_at,audio_enabled,max_viewers,mux_live_stream_id,mux_playback_id,mux_stream_key,mux_ingest_url,mux_latency_mode,created_at,updated_at",
+    )
     .eq("auction_id", auctionId)
     .eq("is_live", true)
     .is("ended_at", null)
@@ -63,7 +65,9 @@ export async function loadLiveSessionById(sessionId: string) {
   const admin = createSupabaseAdminClient() as any;
   const { data, error } = await admin
     .from("auction_livestream_sessions")
-    .select("id,auction_id,host_user_id,is_live,started_at,ended_at,audio_enabled,max_viewers,created_at,updated_at")
+    .select(
+      "id,auction_id,host_user_id,is_live,started_at,ended_at,audio_enabled,max_viewers,mux_live_stream_id,mux_playback_id,mux_stream_key,mux_ingest_url,mux_latency_mode,created_at,updated_at",
+    )
     .eq("id", sessionId)
     .eq("is_live", true)
     .is("ended_at", null)
