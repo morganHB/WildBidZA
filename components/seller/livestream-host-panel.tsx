@@ -57,7 +57,7 @@ export function LivestreamHostPanel({
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Radio className="h-4 w-4 text-brand-600" />
-          Auction livestream (Mux)
+          Auction livestream (Cloudflare Stream)
         </CardTitle>
         <CardDescription>
           Start the stream to generate RTMP ingest details, then broadcast from OBS, Larix Broadcaster, Prism Live,

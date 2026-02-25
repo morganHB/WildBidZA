@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { getMuxLiveStreamStatus, toMuxPlaybackUrl } from "@/lib/livestream/mux";
+import { getCloudflareLiveInputStatus, toCloudflarePlaybackUrl } from "@/lib/livestream/cloudflare";
 import {
   assertAuctionJoinable,
   countActiveViewers,
@@ -10,6 +10,18 @@ import {
   resolveParticipantId,
   touchSession,
 } from "@/lib/livestream/server";
+
+function safeToPlaybackUrl(playbackId: string | null | undefined) {
+  if (!playbackId) {
+    return null;
+  }
+
+  try {
+    return toCloudflarePlaybackUrl(playbackId);
+  } catch {
+    return null;
+  }
+}
 
 export async function GET(_: Request, context: { params: Promise<{ id: string }> }) {
   try {
@@ -40,11 +52,11 @@ export async function GET(_: Request, context: { params: Promise<{ id: string }>
     }
 
     const isHost = Boolean(user?.id && session?.host_user_id && user.id === session.host_user_id);
-    const playbackUrl = session?.mux_playback_id ? toMuxPlaybackUrl(session.mux_playback_id) : null;
+    const playbackUrl = safeToPlaybackUrl(session?.mux_playback_id);
     let muxStatus: "active" | "idle" | "disabled" | null = null;
     if (session?.mux_live_stream_id) {
       try {
-        muxStatus = await getMuxLiveStreamStatus(session.mux_live_stream_id);
+        muxStatus = await getCloudflareLiveInputStatus(session.mux_live_stream_id);
       } catch {
         muxStatus = null;
       }
@@ -141,6 +153,13 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       throw new Error("Livestream is still preparing. Please try again in a few seconds.");
     }
 
+    const playbackUrl = safeToPlaybackUrl(session.mux_playback_id);
+    if (!playbackUrl) {
+      throw new Error(
+        "Livestream playback URL is unavailable. Set CLOUDFLARE_STREAM_CUSTOMER_CODE and try again.",
+      );
+    }
+
     return NextResponse.json({
       ok: true,
       data: {
@@ -154,7 +173,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         started_at: session.started_at,
         is_live: session.is_live,
         mux_playback_id: session.mux_playback_id,
-        playback_url: toMuxPlaybackUrl(session.mux_playback_id),
+        playback_url: playbackUrl,
       },
     });
   } catch (error) {
