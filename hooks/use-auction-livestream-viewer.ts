@@ -31,7 +31,7 @@ type LivestreamSignal = {
   created_at: string;
 };
 
-const GUEST_PARTICIPANT_KEY = "wildbid_guest_livestream_participant_id";
+const VIEWER_PARTICIPANT_KEY = "wildbid_livestream_participant_id";
 const SIGNAL_POLL_INTERVAL_MS = 800;
 const SIGNAL_SINCE_FLOOR_ISO = "1970-01-01T00:00:00.000Z";
 const RECENT_SIGNAL_CACHE_SIZE = 500;
@@ -59,18 +59,18 @@ function isUuid(value: string | null | undefined) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
-function getGuestParticipantId() {
+function getViewerParticipantId() {
   if (typeof window === "undefined") {
     return null;
   }
 
-  const existing = window.localStorage.getItem(GUEST_PARTICIPANT_KEY);
+  const existing = window.sessionStorage.getItem(VIEWER_PARTICIPANT_KEY);
   if (isUuid(existing)) {
     return existing;
   }
 
   const nextId = crypto.randomUUID();
-  window.localStorage.setItem(GUEST_PARTICIPANT_KEY, nextId);
+  window.sessionStorage.setItem(VIEWER_PARTICIPANT_KEY, nextId);
   return nextId;
 }
 
@@ -138,7 +138,6 @@ async function fetchSignals(params: {
 
 export function useAuctionLivestreamViewer({
   auctionId,
-  userId,
   enabled,
 }: {
   auctionId: string;
@@ -150,7 +149,7 @@ export function useAuctionLivestreamViewer({
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [viewerCount, setViewerCount] = useState(0);
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [participantId, setParticipantId] = useState<string | null>(userId ?? null);
+  const [participantId, setParticipantId] = useState<string | null>(null);
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -168,13 +167,8 @@ export function useAuctionLivestreamViewer({
   const seenSignalsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
-    if (userId && isUuid(userId)) {
-      setParticipantId(userId);
-      return;
-    }
-
-    setParticipantId(getGuestParticipantId());
-  }, [userId]);
+    setParticipantId(getViewerParticipantId());
+  }, []);
 
   const cleanup = useCallback((sendLeave: boolean) => {
     if (heartbeatRef.current) {

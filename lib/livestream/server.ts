@@ -21,17 +21,23 @@ export async function getOptionalAuthUserId() {
 }
 
 export async function resolveParticipantId(rawParticipantId?: string | null) {
+  const requestedParticipantId = rawParticipantId?.trim();
   const authUserId = await getOptionalAuthUserId();
   if (authUserId) {
+    if (requestedParticipantId && isUuid(requestedParticipantId)) {
+      // Allow per-device/per-tab participant IDs for authenticated viewers so
+      // multiple viewers can join simultaneously with the same account.
+      return { participantId: requestedParticipantId, authUserId };
+    }
+
     return { participantId: authUserId, authUserId };
   }
 
-  const participantId = rawParticipantId?.trim();
-  if (!participantId || !isUuid(participantId)) {
+  if (!requestedParticipantId || !isUuid(requestedParticipantId)) {
     throw new Error("Guest viewers must include a valid participant_id");
   }
 
-  return { participantId, authUserId: null as string | null };
+  return { participantId: requestedParticipantId, authUserId: null as string | null };
 }
 
 export async function loadLiveSessionByAuction(auctionId: string) {
