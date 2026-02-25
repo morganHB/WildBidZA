@@ -7,7 +7,7 @@ export default function AuctionsPage() {
   return (
     <main className="liba-page-shell animate-in bg-white pb-28">
       <section className="relative overflow-hidden px-6 pb-28 pt-24">
-        <div className="pointer-events-none absolute right-8 top-14 whitespace-nowrap text-[14rem] font-black uppercase italic tracking-tighter text-stone-100 md:text-[24rem]">
+        <div className="pointer-events-none absolute right-8 top-14 whitespace-nowrap text-[14rem] font-black uppercase italic tracking-tighter text-stone-100 dark:text-stone-600 md:text-[24rem]">
           MARKET
         </div>
         <div className="relative z-10 mx-auto w-full max-w-7xl">

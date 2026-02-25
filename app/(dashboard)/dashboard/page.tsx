@@ -14,7 +14,7 @@ export default async function DashboardPage() {
   const [myBids, watchlist] = await Promise.all([getMyBids(user.id), getWatchlist(user.id)]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 text-slate-900 dark:text-slate-100">
       <Card>
         <CardHeader>
           <CardTitle>Welcome, {profile.display_name ?? "Bidder"}</CardTitle>
@@ -22,29 +22,29 @@ export default async function DashboardPage() {
         </CardHeader>
         <CardContent className={`grid gap-4 ${buyerOnly ? "md:grid-cols-2" : "md:grid-cols-3"}`}>
           <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-800">
-            <p className="text-xs uppercase tracking-wide text-slate-500">Approval status</p>
+            <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-100">Approval status</p>
             <p className="mt-2 text-lg font-semibold capitalize">{profile.approval_status}</p>
             {profile.approval_status !== "approved" ? (
-              <p className="mt-1 text-xs text-slate-500">Your account is pending manual verification by an admin.</p>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-100">Your account is pending manual verification by an admin.</p>
             ) : null}
           </div>
           {buyerOnly ? (
             <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-800">
-              <p className="text-xs uppercase tracking-wide text-slate-500">Account type</p>
+              <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-100">Account type</p>
               <p className="mt-2 text-lg font-semibold">Buyer</p>
-              <p className="mt-1 text-xs text-slate-500">Clean bidder workspace with auctions, bids, and watchlist.</p>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-100">Clean bidder workspace with auctions, bids, and watchlist.</p>
             </div>
           ) : (
             <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-800">
-              <p className="text-xs uppercase tracking-wide text-slate-500">Role group</p>
+              <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-100">Role group</p>
               <p className="mt-2 text-lg font-semibold capitalize">{profile.role_group}</p>
-              <p className="mt-1 text-xs text-slate-500">Marketers can buy and sell. Admins manage the platform.</p>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-100">Marketers can buy and sell. Admins manage the platform.</p>
             </div>
           )}
           <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-800">
-            <p className="text-xs uppercase tracking-wide text-slate-500">Role</p>
+            <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-100">Role</p>
             <p className="mt-2 text-lg font-semibold">{profile.is_admin ? "Admin" : "User"}</p>
-            <p className="mt-1 text-xs text-slate-500">Account created {new Date(profile.created_at).toLocaleDateString("en-ZA")}</p>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-100">Account created {new Date(profile.created_at).toLocaleDateString("en-ZA")}</p>
           </div>
         </CardContent>
       </Card>
@@ -81,7 +81,7 @@ export default async function DashboardPage() {
             <CardTitle className="text-base">Account verification</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-slate-600 dark:text-slate-300">
+            <p className="text-sm text-slate-600 dark:text-slate-100">
               {profile.approval_status === "approved"
                 ? "You can place bids on live auctions."
                 : "Bidding unlocks after admin approval."}

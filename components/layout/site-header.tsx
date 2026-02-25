@@ -4,6 +4,7 @@ import { LayoutDashboard, Menu, X } from "lucide-react";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { APP_NAME } from "@/lib/constants/app";
 import { getUnreadNotificationCount } from "@/lib/notifications/service";
+import { ModeToggle } from "@/components/layout/mode-toggle";
 import { Button } from "@/components/ui/button";
 import { NotificationBell } from "@/components/layout/notification-bell";
 
@@ -51,8 +52,14 @@ export async function SiteHeader() {
           <div className="hidden items-center gap-2 sm:flex">
             {user ? (
               <>
+                <ModeToggle />
                 <NotificationBell userId={user.id} initialUnreadCount={unreadCount} />
-                <Button asChild size="sm" variant="outline" className="rounded-xl border-stone-300 px-4">
+                <Button
+                  asChild
+                  size="sm"
+                  variant="outline"
+                  className="rounded-xl border-stone-300 px-4 dark:!border-slate-700 dark:!bg-slate-800 dark:!text-slate-100 dark:hover:!bg-slate-700"
+                >
                   <Link href="/dashboard">
                     <LayoutDashboard className="mr-2 h-4 w-4" /> Dashboard
                   </Link>
@@ -97,12 +104,17 @@ export async function SiteHeader() {
                   Live Now
                 </Link>
                 {user ? (
-                  <Link
-                    href="/dashboard"
-                    className="rounded-xl border border-stone-300 px-3 py-2 text-center text-[11px] font-black uppercase tracking-[0.18em] text-stone-800"
-                  >
-                    Dashboard
-                  </Link>
+                  <>
+                    <Link
+                      href="/dashboard"
+                      className="rounded-xl border border-stone-300 px-3 py-2 text-center text-[11px] font-black uppercase tracking-[0.18em] text-stone-800 dark:!border-slate-700 dark:!bg-slate-800 dark:!text-slate-100"
+                    >
+                      Dashboard
+                    </Link>
+                    <div className="mt-1 flex justify-end">
+                      <ModeToggle />
+                    </div>
+                  </>
                 ) : (
                   <Link
                     href="/sign-in"
