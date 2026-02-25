@@ -62,10 +62,12 @@ export async function GET(_: Request, context: { params: Promise<{ id: string }>
       }
     }
 
+    const providerIsLive = muxStatus === "active";
+
     return NextResponse.json({
       ok: true,
       data: {
-        has_active_stream: Boolean(session),
+        has_active_stream: Boolean(session) && providerIsLive,
         can_view: true,
         can_host: Boolean(canHostResult.data),
         session: session
@@ -151,6 +153,21 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 
     if (!session.mux_playback_id) {
       throw new Error("Livestream is still preparing. Please try again in a few seconds.");
+    }
+
+    if (!session.mux_live_stream_id) {
+      throw new Error("Livestream is still preparing. Please try again in a few seconds.");
+    }
+
+    let streamStatus: "active" | "idle" | "disabled" | null = null;
+    try {
+      streamStatus = await getCloudflareLiveInputStatus(session.mux_live_stream_id);
+    } catch {
+      streamStatus = null;
+    }
+
+    if (streamStatus !== "active") {
+      throw new Error("Host encoder is not live yet. Ask the host to start camera broadcast.");
     }
 
     const playbackUrl = safeToPlaybackUrl(session.mux_playback_id);
