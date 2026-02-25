@@ -495,15 +495,31 @@ export function useAuctionLivestreamHost({
       return;
     }
 
-    const closeViewerPeer = (viewerId: string) => {
+    const closeViewerPeer = (
+      viewerId: string,
+      expectedPeer?: RTCPeerConnection,
+      clearPendingCandidates = true,
+    ) => {
       const existing = peersRef.current.get(viewerId);
-      if (existing) {
-        existing.onicecandidate = null;
-        existing.onconnectionstatechange = null;
-        existing.close();
-        peersRef.current.delete(viewerId);
+      if (!existing) {
+        if (clearPendingCandidates) {
+          pendingIceCandidatesRef.current.delete(viewerId);
+        }
+        return;
       }
-      pendingIceCandidatesRef.current.delete(viewerId);
+
+      if (expectedPeer && existing !== expectedPeer) {
+        return;
+      }
+
+      existing.onicecandidate = null;
+      existing.onconnectionstatechange = null;
+      existing.close();
+      peersRef.current.delete(viewerId);
+
+      if (clearPendingCandidates) {
+        pendingIceCandidatesRef.current.delete(viewerId);
+      }
     };
 
     const ensureViewerPeer = (viewerId: string) => {
@@ -534,7 +550,7 @@ export function useAuctionLivestreamHost({
 
       nextPeer.onconnectionstatechange = () => {
         if (nextPeer.connectionState === "failed" || nextPeer.connectionState === "closed") {
-          closeViewerPeer(viewerId);
+          closeViewerPeer(viewerId, nextPeer);
         }
       };
 
@@ -557,7 +573,7 @@ export function useAuctionLivestreamHost({
       }
 
       // Always renegotiate from a fresh peer for each offer to avoid stale state across rapid re-joins.
-      closeViewerPeer(viewerId);
+      closeViewerPeer(viewerId, undefined, false);
       peer = ensureViewerPeer(viewerId);
       await peer.setRemoteDescription(offer);
       const queued = pendingIceCandidatesRef.current.get(viewerId) ?? [];
