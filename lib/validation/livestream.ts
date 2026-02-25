@@ -2,7 +2,7 @@ import { z } from "zod";
 
 export const startLivestreamSchema = z.object({
   audio_enabled: z.boolean().optional().default(true),
-  max_viewers: z.number().int().min(1).max(100).optional().default(30),
+  max_viewers: z.number().int().min(1).max(250).optional().default(30),
 });
 
 export const livestreamSessionSchema = z.object({

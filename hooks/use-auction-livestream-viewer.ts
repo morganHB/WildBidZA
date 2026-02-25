@@ -35,6 +35,9 @@ const GUEST_PARTICIPANT_KEY = "wildbid_guest_livestream_participant_id";
 const SIGNAL_POLL_INTERVAL_MS = 800;
 const SIGNAL_SINCE_FLOOR_ISO = "1970-01-01T00:00:00.000Z";
 const RECENT_SIGNAL_CACHE_SIZE = 500;
+const CONNECT_TIMEOUT_MS = 40_000;
+const RECONNECT_BASE_DELAY_MS = 1_500;
+const RECONNECT_MAX_DELAY_MS = 10_000;
 
 function nextSinceCursor(lastCreatedAt: string) {
   const timestamp = Date.parse(lastCreatedAt);
@@ -43,6 +46,10 @@ function nextSinceCursor(lastCreatedAt: string) {
   }
 
   return new Date(Math.max(0, timestamp - 1)).toISOString();
+}
+
+function getReconnectDelayMs(attempt: number) {
+  return Math.min(RECONNECT_MAX_DELAY_MS, RECONNECT_BASE_DELAY_MS * Math.max(1, attempt));
 }
 
 function isUuid(value: string | null | undefined) {
@@ -73,6 +80,25 @@ function toUserErrorMessage(error: unknown, fallback: string) {
     return "Unable to authenticate this stream request.";
   }
   return message || fallback;
+}
+
+function shouldAutoReconnect(message: string) {
+  const normalized = message.toLowerCase();
+  return !(
+    normalized.includes("auction has ended")
+    || normalized.includes("livestream ended by host")
+    || normalized.includes("unable to authenticate")
+    || normalized.includes("unauthorized")
+  );
+}
+
+function shouldRejoinFromSignalError(message: string) {
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("participant is not active")
+    || normalized.includes("livestream session is not active")
+    || normalized.includes("sender is not an active participant")
+  );
 }
 
 async function postJson(url: string, body: Record<string, unknown>) {
@@ -130,11 +156,13 @@ export function useAuctionLivestreamViewer({
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const signalPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const connectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const leaveSessionRef = useRef<string | null>(null);
   const hostUserRef = useRef<string | null>(null);
   const remoteStreamRef = useRef<MediaStream | null>(null);
   const pendingIceCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
   const connectedRef = useRef(false);
+  const retryAttemptRef = useRef(0);
   const sinceRef = useRef(SIGNAL_SINCE_FLOOR_ISO);
   const pollingRef = useRef(false);
   const seenSignalsRef = useRef<Set<string>>(new Set());
@@ -162,6 +190,11 @@ export function useAuctionLivestreamViewer({
     if (connectTimeoutRef.current) {
       clearTimeout(connectTimeoutRef.current);
       connectTimeoutRef.current = null;
+    }
+
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
     }
 
     if (pcRef.current) {
@@ -209,12 +242,45 @@ export function useAuctionLivestreamViewer({
   useEffect(() => {
     if (!enabled || !auctionId || !participantId) {
       cleanup(true);
+      retryAttemptRef.current = 0;
       setStatus("idle");
       setError(null);
       return;
     }
 
     let cancelled = false;
+
+    const scheduleReconnect = (reason: string) => {
+      if (cancelled || reconnectTimeoutRef.current) {
+        return;
+      }
+
+      const attempt = retryAttemptRef.current + 1;
+      retryAttemptRef.current = attempt;
+      const delay = getReconnectDelayMs(attempt);
+      setStatus("connecting");
+      setError(`${reason} Retrying...`);
+
+      reconnectTimeoutRef.current = setTimeout(() => {
+        reconnectTimeoutRef.current = null;
+        if (!cancelled) {
+          void boot();
+        }
+      }, delay);
+    };
+
+    const handleConnectionFailure = (streamError: unknown, fallbackMessage: string) => {
+      const message = toUserErrorMessage(streamError, fallbackMessage);
+      cleanup(false);
+
+      if (shouldAutoReconnect(message)) {
+        scheduleReconnect(message);
+        return;
+      }
+
+      setStatus("error");
+      setError(message);
+    };
 
     const processSignals = async (signals: LivestreamSignal[]) => {
       if (!pcRef.current) {
@@ -303,7 +369,12 @@ export function useAuctionLivestreamViewer({
 
           await processSignals(unseenSignals);
         }
-      } catch {
+      } catch (pollError) {
+        const message = pollError instanceof Error ? pollError.message : "";
+        if (shouldRejoinFromSignalError(message)) {
+          handleConnectionFailure(pollError, "Livestream connection dropped.");
+          return;
+        }
         // Ignore transient polling failures.
       } finally {
         pollingRef.current = false;
@@ -359,6 +430,8 @@ export function useAuctionLivestreamViewer({
             clearTimeout(connectTimeoutRef.current);
             connectTimeoutRef.current = null;
           }
+          retryAttemptRef.current = 0;
+          setError(null);
           setRemoteStream(new MediaStream(inboundStream.getTracks()));
           setStatus("live");
         };
@@ -393,15 +466,17 @@ export function useAuctionLivestreamViewer({
                 clearTimeout(connectTimeoutRef.current);
                 connectTimeoutRef.current = null;
               }
+              retryAttemptRef.current = 0;
               setStatus("live");
             }
             return;
           }
 
           if (!connectedRef.current && (pc.connectionState === "failed" || pc.connectionState === "closed")) {
-            setStatus("error");
-            setError("Unable to establish livestream connection. Ask the host to restart the stream.");
-            cleanup(false);
+            handleConnectionFailure(
+              new Error("Unable to establish livestream connection. Reconnecting..."),
+              "Unable to establish livestream connection.",
+            );
           }
         };
 
@@ -432,10 +507,11 @@ export function useAuctionLivestreamViewer({
             return;
           }
 
-          setStatus("error");
-          setError("Could not connect to livestream. Ask the host to restart stream.");
-          cleanup(false);
-        }, 40000);
+          handleConnectionFailure(
+            new Error("Could not connect to livestream."),
+            "Could not connect to livestream.",
+          );
+        }, CONNECT_TIMEOUT_MS);
 
         heartbeatRef.current = setInterval(() => {
           if (!leaveSessionRef.current) {
@@ -449,9 +525,7 @@ export function useAuctionLivestreamViewer({
         }, 15000);
       } catch (streamError) {
         if (!cancelled) {
-          setStatus("error");
-          setError(toUserErrorMessage(streamError, "Failed to connect to livestream"));
-          cleanup(false);
+          handleConnectionFailure(streamError, "Failed to connect to livestream");
         }
       }
     };

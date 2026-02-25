@@ -37,6 +37,7 @@ type LivestreamSignal = {
 const SIGNAL_POLL_INTERVAL_MS = 800;
 const SIGNAL_SINCE_FLOOR_ISO = "1970-01-01T00:00:00.000Z";
 const RECENT_SIGNAL_CACHE_SIZE = 500;
+const DEFAULT_MAX_VIEWERS = 250;
 
 function getViewportOrientation(): LivestreamOrientation {
   if (typeof window === "undefined") {
@@ -671,7 +672,7 @@ export function useAuctionLivestreamHost({
 
       const payload = (await postJson(`/api/seller/auctions/${auctionId}/livestream/start`, {
         audio_enabled: audioEnabled,
-        max_viewers: 100,
+        max_viewers: DEFAULT_MAX_VIEWERS,
       })) as { ok: true; data: LivestreamSession };
 
       const liveSession = payload.data;

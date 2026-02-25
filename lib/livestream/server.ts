@@ -2,7 +2,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const ACTIVE_VIEWER_WINDOW_MS = 45_000;
+const ACTIVE_VIEWER_WINDOW_MS = 120_000;
 
 export function isUuid(value: string) {
   return UUID_PATTERN.test(value);
@@ -128,6 +128,40 @@ export async function isActiveViewer(sessionId: string, viewerId: string) {
   }
 
   return Boolean(data);
+}
+
+export async function isJoinedViewer(sessionId: string, viewerId: string) {
+  const admin = createSupabaseAdminClient() as any;
+  const { data, error } = await admin
+    .from("auction_livestream_viewers")
+    .select("viewer_user_id")
+    .eq("session_id", sessionId)
+    .eq("viewer_user_id", viewerId)
+    .is("left_at", null)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return Boolean(data);
+}
+
+export async function touchViewerPresence(sessionId: string, viewerId: string) {
+  const admin = createSupabaseAdminClient() as any;
+  const { error } = await admin
+    .from("auction_livestream_viewers")
+    .update({
+      last_seen: new Date().toISOString(),
+      left_at: null,
+    })
+    .eq("session_id", sessionId)
+    .eq("viewer_user_id", viewerId)
+    .is("left_at", null);
+
+  if (error) {
+    throw new Error(error.message);
+  }
 }
 
 export async function touchSession(sessionId: string) {
