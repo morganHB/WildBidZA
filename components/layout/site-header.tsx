@@ -1,8 +1,8 @@
 import Link from "next/link";
 import Image from "next/image";
-import { LayoutDashboard, Menu, X } from "lucide-react";
+import { CircleUserRound, LayoutDashboard, Menu, X } from "lucide-react";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { APP_NAME } from "@/lib/constants/app";
+import { isAdmin, isApprovedSeller } from "@/lib/auth/roles";
 import { getUnreadNotificationCount } from "@/lib/notifications/service";
 import { ModeToggle } from "@/components/layout/mode-toggle";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import { NotificationBell } from "@/components/layout/notification-bell";
 const navItems = [
   { href: "/", label: "Home" },
   { href: "/about-us", label: "About Us" },
+  { href: "/safety", label: "Safety" },
   { href: "/auctions", label: "Auctions" },
   { href: "/kraal-bookings", label: "Kraal Bookings" },
   { href: "/contact", label: "Contact" },
@@ -21,7 +22,17 @@ export async function SiteHeader() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const unreadCount = user ? await getUnreadNotificationCount(user.id).catch(() => 0) : 0;
+
+  const [unreadCount, profile] = user
+    ? await Promise.all([
+        getUnreadNotificationCount(user.id).catch(() => 0),
+        supabase.from("profiles").select("*").eq("id", user.id).maybeSingle().then(({ data }) => data),
+      ])
+    : [0, null];
+
+  const showDashboard = Boolean(profile && (isAdmin(profile) || isApprovedSeller(profile)));
+  const accountHref = showDashboard ? "/dashboard" : "/my-account";
+  const accountLabel = showDashboard ? "Dashboard" : "My Account";
 
   return (
     <header className="sticky top-0 z-50 px-4 pt-5 sm:px-6 lg:px-8">
@@ -29,11 +40,11 @@ export async function SiteHeader() {
         <div className="flex h-16 items-center justify-between gap-3 px-4 sm:px-6">
           <Link href="/" className="group flex items-center gap-3">
             <span className="relative h-10 w-10 overflow-hidden rounded-xl border border-stone-300/70 bg-white">
-              <Image src="/liba/logo.webp" alt="LIBA logo" fill sizes="40px" className="object-cover" />
+              <Image src="/noordkaap_logo_transparent.png" alt="Noordkaap logo" fill sizes="40px" className="object-contain p-1" />
             </span>
-            <span className="text-lg font-black uppercase italic tracking-tight text-stone-900 sm:text-xl">
-              {APP_NAME.split(" ")[0]}
-              <span className="text-red-700">.</span>
+            <span className="text-sm font-black uppercase italic leading-tight tracking-tight text-stone-900 sm:text-base">
+              Lewendehawe
+              <span className="ml-1 text-red-700">Noordkaap</span>
             </span>
           </Link>
 
@@ -60,9 +71,17 @@ export async function SiteHeader() {
                   variant="outline"
                   className="rounded-xl border-stone-300 px-4 dark:!border-slate-700 dark:!bg-slate-800 dark:!text-slate-100 dark:hover:!bg-slate-700"
                 >
-                  <Link href="/dashboard">
-                    <LayoutDashboard className="mr-2 h-4 w-4" /> Dashboard
+                  <Link href={accountHref}>
+                    {showDashboard ? <LayoutDashboard className="mr-2 h-4 w-4" /> : <CircleUserRound className="mr-2 h-4 w-4" />}
+                    {accountLabel}
                   </Link>
+                </Button>
+                <Button
+                  asChild
+                  size="sm"
+                  className="rounded-xl bg-red-700 px-5 text-white hover:bg-stone-900"
+                >
+                  <Link href="/auctions/live">Live Now</Link>
                 </Button>
               </>
             ) : (
@@ -106,10 +125,10 @@ export async function SiteHeader() {
                 {user ? (
                   <>
                     <Link
-                      href="/dashboard"
+                      href={accountHref}
                       className="rounded-xl border border-stone-300 px-3 py-2 text-center text-[11px] font-black uppercase tracking-[0.18em] text-stone-800 dark:!border-slate-700 dark:!bg-slate-800 dark:!text-slate-100"
                     >
-                      Dashboard
+                      {accountLabel}
                     </Link>
                     <div className="mt-1 flex justify-end">
                       <ModeToggle />

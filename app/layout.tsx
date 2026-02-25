@@ -18,6 +18,11 @@ const spaceGrotesk = Space_Grotesk({
 export const metadata: Metadata = {
   title: APP_NAME,
   description: APP_DESCRIPTION,
+  icons: {
+    icon: "/noordkaap_logo_transparent.png",
+    shortcut: "/noordkaap_logo_transparent.png",
+    apple: "/noordkaap_logo_transparent.png",
+  },
 };
 
 export default function RootLayout({

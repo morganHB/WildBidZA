@@ -25,6 +25,34 @@ type ReportSummary = {
   value: string;
 };
 
+export type SalesOutcomeDetail = {
+  auction_id: string;
+  winner_user_id: string | null;
+  winner_name: string;
+  winner_email: string;
+  winner_phone: string;
+  winning_bid: number | null;
+  total_value: number | null;
+  reserve_price: number | null;
+  reserve_met: string;
+  sold: boolean;
+};
+
+export type ReportChecklistItem = {
+  auction_id: string;
+  auction_title: string;
+  status: ReportStatus;
+  end_time: string;
+  winner_name: string;
+  winner_email: string;
+  winner_phone: string;
+  winning_bid: number | null;
+  total_value: number | null;
+  is_completed: boolean;
+  completed_at: string | null;
+  completed_by_name: string;
+};
+
 export type SellerReportResult = {
   type: ReportType;
   title: string;
@@ -33,6 +61,7 @@ export type SellerReportResult = {
   columns: ReportColumn[];
   rows: ReportRow[];
   summary: ReportSummary[];
+  salesOutcomeDetails?: Record<string, SalesOutcomeDetail>;
 };
 
 type AuctionReportBase = AuctionRow & {
@@ -56,12 +85,16 @@ type AuctionReportBase = AuctionRow & {
     | null;
   winner:
     | {
+        id: string;
         display_name: string | null;
         email: string | null;
+        phone: string | null;
       }
     | {
+        id: string;
         display_name: string | null;
         email: string | null;
+        phone: string | null;
       }[]
     | null;
 };
@@ -165,6 +198,10 @@ function getDateWindow(filters: ReportFiltersInput) {
   return { fromIso, toIso };
 }
 
+function isMissingFinalizationTableError(message: string) {
+  return /auction_report_finalizations|relation .*does not exist/i.test(message);
+}
+
 async function getAccessibleAuctionIds(params: {
   userId: string;
   isAdmin: boolean;
@@ -231,7 +268,7 @@ async function getFilteredAuctions(params: {
       *,
       category:animal_categories(name),
       seller:profiles!auctions_seller_id_fkey(display_name,email),
-      winner:profiles!auctions_winner_user_id_fkey(display_name,email)
+      winner:profiles!auctions_winner_user_id_fkey(id,display_name,email,phone)
     `,
     )
     .order("start_time", { ascending: false })
@@ -490,6 +527,7 @@ async function buildSalesOutcomesReport(params: {
     return {
       columns,
       rows: [] as ReportRow[],
+      salesOutcomeDetails: {} as Record<string, SalesOutcomeDetail>,
       summary: [
         { label: "Ended auctions", value: "0" },
         { label: "Sold", value: "0" },
@@ -519,6 +557,8 @@ async function buildSalesOutcomesReport(params: {
     }
   }
 
+  const salesOutcomeDetails: Record<string, SalesOutcomeDetail> = {};
+
   const rows = endedAuctions.map((auction) => {
     const winner = takeOne(auction.winner);
     const winningBid = auction.winning_bid_id
@@ -536,6 +576,19 @@ async function buildSalesOutcomesReport(params: {
         : winningBid >= auction.reserve_price
           ? "Yes"
           : "No";
+
+    salesOutcomeDetails[auction.id] = {
+      auction_id: auction.id,
+      winner_user_id: auction.winner_user_id,
+      winner_name: winner?.display_name ?? "",
+      winner_email: winner?.email ?? "",
+      winner_phone: winner?.phone ?? "",
+      winning_bid: winningBid,
+      total_value: totalValue,
+      reserve_price: auction.reserve_price,
+      reserve_met: reserveMet,
+      sold: winningBid !== null,
+    };
 
     return {
       auction_id: auction.id,
@@ -555,6 +608,7 @@ async function buildSalesOutcomesReport(params: {
   return {
     columns,
     rows,
+    salesOutcomeDetails,
     summary: [
       { label: "Ended auctions", value: String(rows.length) },
       { label: "Sold", value: String(soldCount) },
@@ -608,6 +662,243 @@ export async function getSellerReportData(params: {
     generatedAt,
     ...report,
   };
+}
+
+export async function getReportChecklistItems(params: {
+  userId: string;
+  isAdmin: boolean;
+  filters: ReportFiltersInput;
+}): Promise<ReportChecklistItem[]> {
+  const supabase = await createSupabaseServerClient();
+  const auctions = await getFilteredAuctions(params);
+
+  if (auctions.length === 0) {
+    return [];
+  }
+
+  const auctionIds = auctions.map((auction) => auction.id);
+  const winningBidIds = auctions
+    .map((auction) => auction.winning_bid_id)
+    .filter((id): id is string => Boolean(id));
+
+  const winningBidMap = new Map<string, { amount: number }>();
+  if (winningBidIds.length > 0) {
+    const { data: winningBids, error: winningBidError } = await supabase
+      .from("bids")
+      .select("id,amount")
+      .in("id", winningBidIds);
+
+    if (winningBidError) {
+      throw new Error(winningBidError.message);
+    }
+
+    for (const bid of winningBids ?? []) {
+      winningBidMap.set(bid.id, { amount: bid.amount });
+    }
+  }
+
+  const { data: checklistRows, error: checklistError } = await supabase
+    .from("auction_report_finalizations")
+    .select(
+      `
+      auction_id,
+      is_completed,
+      completed_at,
+      completed_by,
+      completed_by_profile:profiles!auction_report_finalizations_completed_by_fkey(display_name,email)
+    `,
+    )
+    .in("auction_id", auctionIds);
+
+  const finalizationMap = new Map<
+    string,
+    {
+      is_completed: boolean;
+      completed_at: string | null;
+      completed_by_name: string;
+    }
+  >();
+
+  if (checklistError) {
+    if (!isMissingFinalizationTableError(checklistError.message)) {
+      throw new Error(checklistError.message);
+    }
+
+    const { data: fallbackLogs, error: fallbackError } = await supabase
+      .from("audit_log")
+      .select("target_id,metadata,created_at")
+      .eq("action", "report.finalization_updated")
+      .eq("target_type", "auction_report_finalization")
+      .in("target_id", auctionIds)
+      .order("created_at", { ascending: false })
+      .limit(10000);
+
+    if (fallbackError) {
+      throw new Error(fallbackError.message);
+    }
+
+    for (const log of (fallbackLogs ?? []) as Array<{
+      target_id: string | null;
+      created_at: string;
+      metadata:
+        | {
+            is_completed?: boolean;
+            completed_at?: string | null;
+            completed_by_name?: string | null;
+          }
+        | null;
+    }>) {
+      if (!log.target_id || finalizationMap.has(log.target_id)) {
+        continue;
+      }
+
+      finalizationMap.set(log.target_id, {
+        is_completed: Boolean(log.metadata?.is_completed),
+        completed_at: log.metadata?.completed_at ?? null,
+        completed_by_name: log.metadata?.completed_by_name ?? "",
+      });
+    }
+  } else {
+    for (const row of (checklistRows ?? []) as Array<{
+      auction_id: string;
+      is_completed: boolean;
+      completed_at: string | null;
+      completed_by_profile:
+        | { display_name: string | null; email: string | null }
+        | { display_name: string | null; email: string | null }[]
+        | null;
+    }>) {
+      const completedBy = takeOne(row.completed_by_profile);
+      finalizationMap.set(row.auction_id, {
+        is_completed: row.is_completed,
+        completed_at: row.completed_at,
+        completed_by_name: completedBy?.display_name ?? completedBy?.email ?? "",
+      });
+    }
+  }
+
+  return auctions.map((auction) => {
+    const winner = takeOne(auction.winner);
+    const finalization = finalizationMap.get(auction.id);
+    const winningBid = auction.winning_bid_id
+      ? winningBidMap.get(auction.winning_bid_id)?.amount ?? null
+      : null;
+    const totalValue =
+      winningBid === null
+        ? null
+        : auction.bid_pricing_mode === "per_head"
+          ? winningBid * Math.max(1, auction.animal_count)
+          : winningBid;
+
+    return {
+      auction_id: auction.id,
+      auction_title: auction.title,
+      status: auction.derived_status,
+      end_time: auction.end_time,
+      winner_name: winner?.display_name ?? "",
+      winner_email: winner?.email ?? "",
+      winner_phone: winner?.phone ?? "",
+      winning_bid: winningBid,
+      total_value: totalValue,
+      is_completed: finalization?.is_completed ?? false,
+      completed_at: finalization?.completed_at ?? null,
+      completed_by_name: finalization?.completed_by_name ?? "",
+    } satisfies ReportChecklistItem;
+  });
+}
+
+export async function setReportChecklistCompletion(params: {
+  userId: string;
+  isAdmin: boolean;
+  auctionId: string;
+  isCompleted: boolean;
+}) {
+  const supabase = await createSupabaseServerClient();
+
+  if (!params.isAdmin) {
+    const { data: canManage, error: canManageError } = await supabase.rpc("can_manage_auction", {
+      p_auction_id: params.auctionId,
+      p_user_id: params.userId,
+    });
+
+    if (canManageError) {
+      throw new Error(canManageError.message);
+    }
+
+    if (!canManage) {
+      throw new Error("You do not have permission to update this lot finalization");
+    }
+  }
+
+  const nowIso = new Date().toISOString();
+  const { data: actorProfile } = await supabase
+    .from("profiles")
+    .select("display_name,email")
+    .eq("id", params.userId)
+    .maybeSingle();
+  const completedByName = actorProfile?.display_name ?? actorProfile?.email ?? params.userId;
+
+  const payload = {
+    auction_id: params.auctionId,
+    is_completed: params.isCompleted,
+    completed_at: params.isCompleted ? nowIso : null,
+    completed_by: params.isCompleted ? params.userId : null,
+    updated_at: nowIso,
+  };
+
+  const { data, error } = await supabase
+    .from("auction_report_finalizations")
+    .upsert(payload, { onConflict: "auction_id" })
+    .select("auction_id,is_completed,completed_at,completed_by")
+    .single();
+
+  if (error) {
+    if (isMissingFinalizationTableError(error.message)) {
+      const { error: fallbackAuditError } = await supabase.from("audit_log").insert({
+        actor_id: params.userId,
+        action: "report.finalization_updated",
+        target_type: "auction_report_finalization",
+        target_id: params.auctionId,
+        metadata: {
+          auction_id: params.auctionId,
+          is_completed: params.isCompleted,
+          completed_at: payload.completed_at,
+          completed_by_name: params.isCompleted ? completedByName : "",
+        },
+      });
+
+      if (fallbackAuditError) {
+        throw new Error(fallbackAuditError.message);
+      }
+
+      return {
+        auction_id: params.auctionId,
+        is_completed: params.isCompleted,
+        completed_at: payload.completed_at,
+        completed_by: payload.completed_by,
+      };
+    }
+    throw new Error(error.message);
+  }
+
+  const { error: auditError } = await supabase.from("audit_log").insert({
+    actor_id: params.userId,
+    action: "report.finalization_updated",
+    target_type: "auction_report_finalization",
+    target_id: params.auctionId,
+    metadata: {
+      auction_id: params.auctionId,
+      is_completed: params.isCompleted,
+      completed_at: payload.completed_at,
+      completed_by_name: params.isCompleted ? completedByName : "",
+    },
+  });
+
+  if (auditError) {
+    throw new Error(auditError.message);
+  }
+
+  return data;
 }
 
 function escapeCsvCell(value: ReportValue) {

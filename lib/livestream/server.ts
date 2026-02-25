@@ -2,7 +2,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const ACTIVE_VIEWER_WINDOW_MS = 45_000;
+const ACTIVE_VIEWER_WINDOW_MS = 120_000;
 
 export function isUuid(value: string) {
   return UUID_PATTERN.test(value);
@@ -21,24 +21,32 @@ export async function getOptionalAuthUserId() {
 }
 
 export async function resolveParticipantId(rawParticipantId?: string | null) {
+  const requestedParticipantId = rawParticipantId?.trim();
   const authUserId = await getOptionalAuthUserId();
   if (authUserId) {
+    if (requestedParticipantId && isUuid(requestedParticipantId)) {
+      // Allow per-device/per-tab participant IDs for authenticated viewers so
+      // multiple viewers can join simultaneously with the same account.
+      return { participantId: requestedParticipantId, authUserId };
+    }
+
     return { participantId: authUserId, authUserId };
   }
 
-  const participantId = rawParticipantId?.trim();
-  if (!participantId || !isUuid(participantId)) {
+  if (!requestedParticipantId || !isUuid(requestedParticipantId)) {
     throw new Error("Guest viewers must include a valid participant_id");
   }
 
-  return { participantId, authUserId: null as string | null };
+  return { participantId: requestedParticipantId, authUserId: null as string | null };
 }
 
 export async function loadLiveSessionByAuction(auctionId: string) {
   const admin = createSupabaseAdminClient() as any;
   const { data, error } = await admin
     .from("auction_livestream_sessions")
-    .select("id,auction_id,host_user_id,is_live,started_at,ended_at,audio_enabled,max_viewers,created_at,updated_at")
+    .select(
+      "id,auction_id,host_user_id,is_live,started_at,ended_at,audio_enabled,max_viewers,mux_live_stream_id,mux_playback_id,mux_stream_key,mux_ingest_url,mux_latency_mode,created_at,updated_at",
+    )
     .eq("auction_id", auctionId)
     .eq("is_live", true)
     .is("ended_at", null)
@@ -57,7 +65,9 @@ export async function loadLiveSessionById(sessionId: string) {
   const admin = createSupabaseAdminClient() as any;
   const { data, error } = await admin
     .from("auction_livestream_sessions")
-    .select("id,auction_id,host_user_id,is_live,started_at,ended_at,audio_enabled,max_viewers,created_at,updated_at")
+    .select(
+      "id,auction_id,host_user_id,is_live,started_at,ended_at,audio_enabled,max_viewers,mux_live_stream_id,mux_playback_id,mux_stream_key,mux_ingest_url,mux_latency_mode,created_at,updated_at",
+    )
     .eq("id", sessionId)
     .eq("is_live", true)
     .is("ended_at", null)
@@ -128,6 +138,40 @@ export async function isActiveViewer(sessionId: string, viewerId: string) {
   }
 
   return Boolean(data);
+}
+
+export async function isJoinedViewer(sessionId: string, viewerId: string) {
+  const admin = createSupabaseAdminClient() as any;
+  const { data, error } = await admin
+    .from("auction_livestream_viewers")
+    .select("viewer_user_id")
+    .eq("session_id", sessionId)
+    .eq("viewer_user_id", viewerId)
+    .is("left_at", null)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return Boolean(data);
+}
+
+export async function touchViewerPresence(sessionId: string, viewerId: string) {
+  const admin = createSupabaseAdminClient() as any;
+  const { error } = await admin
+    .from("auction_livestream_viewers")
+    .update({
+      last_seen: new Date().toISOString(),
+      left_at: null,
+    })
+    .eq("session_id", sessionId)
+    .eq("viewer_user_id", viewerId)
+    .is("left_at", null);
+
+  if (error) {
+    throw new Error(error.message);
+  }
 }
 
 export async function touchSession(sessionId: string) {

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { LoaderCircle, SendHorizontal } from "lucide-react";
@@ -131,7 +131,7 @@ export function DealChat({
                       <p className={cn("text-xs", isOwn ? "text-brand-50/90" : "text-slate-500")}>{item.sender_name}</p>
                       <p className="mt-1 whitespace-pre-wrap break-words">{item.message}</p>
                       <p className={cn("mt-2 text-[11px]", isOwn ? "text-brand-100/90" : "text-slate-500")}>
-                        {relativeFromNow(item.created_at)} • {new Date(item.created_at).toLocaleString("en-ZA")}
+                        {relativeFromNow(item.created_at)} | {new Date(item.created_at).toLocaleString("en-ZA")}
                       </p>
                     </div>
                   </div>
@@ -162,3 +162,4 @@ export function DealChat({
     </Card>
   );
 }
+

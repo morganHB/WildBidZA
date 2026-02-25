@@ -1,4 +1,12 @@
-export type LivestreamQualityPreset = "standard" | "data_saver";
+export type LivestreamQualityPreset = "hd_720" | "full_hd_1080";
+export type LivestreamCameraFacing = "user" | "environment";
+export type LivestreamOrientation = "portrait" | "landscape";
+
+type LivestreamVideoConstraintOptions = {
+  deviceId?: string;
+  facingMode?: LivestreamCameraFacing;
+  orientation?: LivestreamOrientation;
+};
 
 function splitCsvUrls(value: string | undefined) {
   return (value ?? "")
@@ -49,22 +57,38 @@ export const LIVESTREAM_ICE_CONFIG: RTCConfiguration = {
 
 export function getVideoConstraints(
   preset: LivestreamQualityPreset,
-  deviceId?: string,
+  options: LivestreamVideoConstraintOptions = {},
 ): MediaTrackConstraints {
-  if (preset === "data_saver") {
+  const orientation = options.orientation ?? "landscape";
+  const preferPortrait = orientation === "portrait";
+  const base =
+    preset === "full_hd_1080"
+      ? { width: 1920, height: 1080, frameRate: 30 }
+      : { width: 1280, height: 720, frameRate: 30 };
+
+  const widthIdeal = preferPortrait ? base.height : base.width;
+  const heightIdeal = preferPortrait ? base.width : base.height;
+
+  return {
+    deviceId: options.deviceId ? { exact: options.deviceId } : undefined,
+    facingMode: !options.deviceId && options.facingMode ? { ideal: options.facingMode } : undefined,
+    width: { ideal: widthIdeal, max: widthIdeal },
+    height: { ideal: heightIdeal, max: heightIdeal },
+    frameRate: { ideal: base.frameRate, max: base.frameRate },
+  };
+}
+
+export function getVideoBitratePreset(preset: LivestreamQualityPreset) {
+  if (preset === "full_hd_1080") {
     return {
-      deviceId: deviceId ? { exact: deviceId } : undefined,
-      width: { ideal: 426, max: 640 },
-      height: { ideal: 240, max: 360 },
-      frameRate: { ideal: 15, max: 18 },
+      maxBitrate: 4_500_000,
+      maxFramerate: 30,
     };
   }
 
   return {
-    deviceId: deviceId ? { exact: deviceId } : undefined,
-    width: { ideal: 640, max: 960 },
-    height: { ideal: 360, max: 540 },
-    frameRate: { ideal: 24, max: 30 },
+    maxBitrate: 2_500_000,
+    maxFramerate: 30,
   };
 }
 

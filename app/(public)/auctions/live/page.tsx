@@ -63,7 +63,7 @@ export default async function LiveAuctionsPage() {
               Active Auction Lots
             </h2>
           </div>
-          <LiveLotGrid auctions={liveAuctions as any} isAuthenticated={Boolean(user)} />
+          <LiveLotGrid auctions={liveAuctions as any} isAuthenticated={Boolean(user)} userId={user?.id} />
         </div>
       </section>
 

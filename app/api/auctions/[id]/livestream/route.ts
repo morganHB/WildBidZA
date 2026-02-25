@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getMuxLiveStreamStatus, toMuxPlaybackUrl } from "@/lib/livestream/mux";
 import {
   assertAuctionJoinable,
   countActiveViewers,
@@ -38,6 +39,17 @@ export async function GET(_: Request, context: { params: Promise<{ id: string }>
       viewerCount = await countActiveViewers(session.id);
     }
 
+    const isHost = Boolean(user?.id && session?.host_user_id && user.id === session.host_user_id);
+    const playbackUrl = session?.mux_playback_id ? toMuxPlaybackUrl(session.mux_playback_id) : null;
+    let muxStatus: "active" | "idle" | "disabled" | null = null;
+    if (session?.mux_live_stream_id) {
+      try {
+        muxStatus = await getMuxLiveStreamStatus(session.mux_live_stream_id);
+      } catch {
+        muxStatus = null;
+      }
+    }
+
     return NextResponse.json({
       ok: true,
       data: {
@@ -46,10 +58,29 @@ export async function GET(_: Request, context: { params: Promise<{ id: string }>
         can_host: Boolean(canHostResult.data),
         session: session
           ? {
-              ...session,
+              id: session.id,
+              auction_id: session.auction_id,
+              host_user_id: session.host_user_id,
+              is_live: session.is_live,
+              started_at: session.started_at,
+              ended_at: session.ended_at,
+              audio_enabled: session.audio_enabled,
+              max_viewers: session.max_viewers,
+              mux_live_stream_id: session.mux_live_stream_id,
+              mux_playback_id: session.mux_playback_id,
+              mux_latency_mode: session.mux_latency_mode,
+              playback_url: playbackUrl,
+              mux_status: muxStatus,
               viewer_count: viewerCount,
             }
           : null,
+        host_controls:
+          session && isHost
+            ? {
+                mux_stream_key: session.mux_stream_key,
+                mux_ingest_url: session.mux_ingest_url,
+              }
+            : null,
       },
     });
   } catch (error) {
@@ -106,6 +137,10 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     await touchSession(session.id);
     activeCount = await countActiveViewers(session.id);
 
+    if (!session.mux_playback_id) {
+      throw new Error("Livestream is still preparing. Please try again in a few seconds.");
+    }
+
     return NextResponse.json({
       ok: true,
       data: {
@@ -118,6 +153,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         viewer_count: activeCount,
         started_at: session.started_at,
         is_live: session.is_live,
+        mux_playback_id: session.mux_playback_id,
+        playback_url: toMuxPlaybackUrl(session.mux_playback_id),
       },
     });
   } catch (error) {

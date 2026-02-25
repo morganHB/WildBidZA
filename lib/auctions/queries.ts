@@ -289,6 +289,11 @@ export async function getAuctionById(auctionId: string, userId?: string | null) 
     ended_at: string | null;
     audio_enabled: boolean;
     max_viewers: number;
+    mux_live_stream_id: string | null;
+    mux_playback_id: string | null;
+    mux_stream_key: string | null;
+    mux_ingest_url: string | null;
+    mux_latency_mode: string | null;
     created_at: string;
     updated_at: string;
   } | null = null;
@@ -319,7 +324,9 @@ export async function getAuctionById(auctionId: string, userId?: string | null) 
       }),
       supabase
         .from("auction_livestream_sessions")
-        .select("id,auction_id,host_user_id,is_live,started_at,ended_at,audio_enabled,max_viewers,created_at,updated_at")
+        .select(
+          "id,auction_id,host_user_id,is_live,started_at,ended_at,audio_enabled,max_viewers,mux_live_stream_id,mux_playback_id,mux_stream_key,mux_ingest_url,mux_latency_mode,created_at,updated_at",
+        )
         .eq("auction_id", auctionId)
         .eq("is_live", true)
         .is("ended_at", null)
