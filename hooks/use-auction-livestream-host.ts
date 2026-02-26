@@ -1,20 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  getVideoConstraints,
-  getVideoBitratePreset,
-  LIVESTREAM_ICE_CONFIG,
-  type LivestreamCameraFacing,
-  type LivestreamOrientation,
-  type LivestreamQualityPreset,
-  toIceCandidate,
-  toSessionDescription,
-} from "@/lib/livestream/webrtc";
 
 type HostStatus = "idle" | "starting" | "live" | "stopping" | "error";
 
-type LivestreamSession = {
+type HostSession = {
   session_id: string;
   auction_id: string;
   host_user_id: string;
@@ -22,40 +12,47 @@ type LivestreamSession = {
   max_viewers: number;
   started_at: string;
   is_live: boolean;
+  mux_live_stream_id: string | null;
+  mux_playback_id: string | null;
+  mux_stream_key: string | null;
+  mux_ingest_url: string | null;
+  mux_latency_mode: string | null;
+  playback_url: string | null;
+  mux_status: "active" | "idle" | "disabled" | null;
+  playback_manifest_status?: number | null;
 };
 
-type LivestreamSignal = {
-  id: string;
-  session_id: string;
-  from_user_id: string;
-  to_user_id: string;
-  signal_type: "offer" | "answer" | "ice_candidate" | "leave";
-  payload: unknown;
-  created_at: string;
+type StatePayload = {
+  has_active_stream: boolean;
+  stream_ready?: boolean;
+  playback_manifest_status?: number | null;
+  can_host: boolean;
+  session: {
+    id: string;
+    auction_id: string;
+    host_user_id: string;
+    is_live: boolean;
+    started_at: string;
+    ended_at: string | null;
+    audio_enabled: boolean;
+    max_viewers: number;
+    mux_live_stream_id: string | null;
+    mux_playback_id: string | null;
+    mux_latency_mode: string | null;
+    playback_url: string | null;
+    mux_status: "active" | "idle" | "disabled" | null;
+    viewer_count: number;
+  } | null;
+  host_controls:
+    | {
+        mux_stream_key: string | null;
+        mux_ingest_url: string | null;
+      }
+    | null;
 };
 
-const SIGNAL_POLL_INTERVAL_MS = 800;
-const SIGNAL_SINCE_FLOOR_ISO = "1970-01-01T00:00:00.000Z";
-const RECENT_SIGNAL_CACHE_SIZE = 500;
 const DEFAULT_MAX_VIEWERS = 250;
-const LEGACY_MAX_VIEWERS = 100;
-
-function getViewportOrientation(): LivestreamOrientation {
-  if (typeof window === "undefined") {
-    return "landscape";
-  }
-
-  return window.innerWidth >= window.innerHeight ? "landscape" : "portrait";
-}
-
-function nextSinceCursor(lastCreatedAt: string) {
-  const timestamp = Date.parse(lastCreatedAt);
-  if (Number.isNaN(timestamp)) {
-    return lastCreatedAt;
-  }
-
-  return new Date(Math.max(0, timestamp - 1)).toISOString();
-}
+const REFRESH_INTERVAL_MS = 10_000;
 
 function toUserErrorMessage(error: unknown, fallback: string) {
   const message = error instanceof Error ? error.message : fallback;
@@ -63,15 +60,6 @@ function toUserErrorMessage(error: unknown, fallback: string) {
     return "Your session expired. Please sign in again.";
   }
   return message || fallback;
-}
-
-function stopLivestreamRequest(auctionId: string, keepalive = false) {
-  return fetch(`/api/seller/auctions/${auctionId}/livestream/stop`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: "{}",
-    keepalive,
-  });
 }
 
 async function postJson(url: string, body: Record<string, unknown>) {
@@ -90,42 +78,50 @@ async function postJson(url: string, body: Record<string, unknown>) {
 }
 
 async function fetchLivestreamState(auctionId: string) {
-  const response = await fetch(`/api/auctions/${auctionId}/livestream`, {
-    cache: "no-store",
-  });
+  const response = await fetch(`/api/auctions/${auctionId}/livestream`, { cache: "no-store" });
+  const payload = (await response.json().catch(() => ({
+    ok: false,
+    error: "Failed to load livestream",
+  }))) as { ok: boolean; error?: string; data?: StatePayload };
 
-  const payload = await response.json().catch(() => ({ ok: false, error: "Failed to load livestream" }));
-  if (!response.ok || !payload.ok) {
+  if (!response.ok || !payload.ok || !payload.data) {
     throw new Error(payload.error ?? "Failed to load livestream");
   }
 
-  return payload.data as {
-    has_active_stream: boolean;
-    session: {
-      id: string;
-      viewer_count: number;
-    } | null;
-  };
+  return payload.data;
 }
 
-async function fetchSignals(params: {
-  auctionId: string;
-  sessionId: string;
-  participantId: string;
-  since: string;
-}) {
-  const url = new URL(`/api/auctions/${params.auctionId}/livestream/signal`, window.location.origin);
-  url.searchParams.set("session_id", params.sessionId);
-  url.searchParams.set("participant_id", params.participantId);
-  url.searchParams.set("since", params.since);
+function stopLivestreamRequest(auctionId: string, keepalive = false) {
+  return fetch(`/api/seller/auctions/${auctionId}/livestream/stop`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+    keepalive,
+  });
+}
 
-  const response = await fetch(url.toString(), { cache: "no-store" });
-  const payload = await response.json().catch(() => ({ ok: false, error: "Request failed" }));
-  if (!response.ok || !payload.ok) {
-    throw new Error(payload.error ?? "Failed to fetch livestream signals");
+function toHostSession(state: StatePayload) {
+  if (!state.session) {
+    return null;
   }
 
-  return (payload.data?.items ?? []) as LivestreamSignal[];
+  return {
+    session_id: state.session.id,
+    auction_id: state.session.auction_id,
+    host_user_id: state.session.host_user_id,
+    is_live: state.session.is_live,
+    started_at: state.session.started_at,
+    audio_enabled: state.session.audio_enabled,
+    max_viewers: state.session.max_viewers,
+    mux_live_stream_id: state.session.mux_live_stream_id,
+    mux_playback_id: state.session.mux_playback_id,
+    mux_stream_key: state.host_controls?.mux_stream_key ?? null,
+    mux_ingest_url: state.host_controls?.mux_ingest_url ?? null,
+    mux_latency_mode: state.session.mux_latency_mode,
+    playback_url: state.session.playback_url,
+    mux_status: state.session.mux_status,
+    playback_manifest_status: state.playback_manifest_status ?? null,
+  } satisfies HostSession;
 }
 
 export function useAuctionLivestreamHost({
@@ -139,515 +135,74 @@ export function useAuctionLivestreamHost({
 }) {
   const [status, setStatus] = useState<HostStatus>("idle");
   const [error, setError] = useState<string | null>(null);
-  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
-  const [session, setSession] = useState<LivestreamSession | null>(null);
+  const [session, setSession] = useState<HostSession | null>(null);
   const [viewerCount, setViewerCount] = useState(0);
-  const [qualityPreset, setQualityPreset] = useState<LivestreamQualityPreset>("hd_720");
   const [audioEnabled, setAudioEnabled] = useState(true);
-  const [availableCameras, setAvailableCameras] = useState<MediaDeviceInfo[]>([]);
-  const [selectedCameraId, setSelectedCameraId] = useState<string>("auto");
-  const [cameraFacing, setCameraFacing] = useState<LivestreamCameraFacing>("environment");
-  const [orientation, setOrientation] = useState<LivestreamOrientation>("landscape");
-  const [effectiveQualityPreset, setEffectiveQualityPreset] = useState<LivestreamQualityPreset>("hd_720");
 
-  const peersRef = useRef<Map<string, RTCPeerConnection>>(new Map());
-  const sessionPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const signalPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const qualityRef = useRef<LivestreamQualityPreset>("hd_720");
-  const selectedCameraIdRef = useRef<string>("auto");
-  const cameraFacingRef = useRef<LivestreamCameraFacing>("environment");
-  const orientationRef = useRef<LivestreamOrientation>("landscape");
-  const sessionRef = useRef<LivestreamSession | null>(null);
-  const pendingIceCandidatesRef = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
-  const sinceRef = useRef(SIGNAL_SINCE_FLOOR_ISO);
-  const signalPollingRef = useRef(false);
-  const seenSignalsRef = useRef<Set<string>>(new Set());
+  const refreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const connectionHealth = useMemo(() => {
-    if (!session) {
-      return "Offline";
+  const clearRefreshTimer = useCallback(() => {
+    if (refreshTimerRef.current) {
+      clearInterval(refreshTimerRef.current);
+      refreshTimerRef.current = null;
     }
-
-    if (peersRef.current.size === 0) {
-      return "Live - waiting for viewers";
-    }
-
-    const disconnected = Array.from(peersRef.current.values()).filter(
-      (peer) => peer.connectionState === "disconnected" || peer.connectionState === "failed",
-    ).length;
-
-    if (disconnected > 0) {
-      return `Live - ${disconnected} unstable connection${disconnected === 1 ? "" : "s"}`;
-    }
-
-    return `Live - ${peersRef.current.size} peer connection${peersRef.current.size === 1 ? "" : "s"}`;
-  }, [session]);
-
-  const cleanupConnections = useCallback(() => {
-    if (signalPollRef.current) {
-      clearInterval(signalPollRef.current);
-      signalPollRef.current = null;
-    }
-
-    if (sessionPollRef.current) {
-      clearInterval(sessionPollRef.current);
-      sessionPollRef.current = null;
-    }
-
-    peersRef.current.forEach((peer) => {
-      peer.onicecandidate = null;
-      peer.onconnectionstatechange = null;
-      peer.close();
-    });
-    peersRef.current.clear();
-    pendingIceCandidatesRef.current.clear();
-    seenSignalsRef.current.clear();
-    signalPollingRef.current = false;
-    sinceRef.current = SIGNAL_SINCE_FLOOR_ISO;
   }, []);
 
-  const stopTracks = useCallback(() => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
-      streamRef.current = null;
+  const applyState = useCallback((state: StatePayload) => {
+    const mapped = toHostSession(state);
+    setSession(mapped);
+    setViewerCount(state.session?.viewer_count ?? 0);
+
+    if (mapped) {
+      setAudioEnabled(mapped.audio_enabled);
+      setStatus("live");
+      return;
     }
 
-    setLocalStream(null);
+    setStatus("idle");
   }, []);
 
-  useEffect(() => {
-    sessionRef.current = session;
-  }, [session]);
+  const refreshState = useCallback(async () => {
+    if (!canHost) {
+      return;
+    }
 
-  useEffect(() => {
-    qualityRef.current = qualityPreset;
-  }, [qualityPreset]);
-
-  useEffect(() => {
-    selectedCameraIdRef.current = selectedCameraId;
-  }, [selectedCameraId]);
-
-  useEffect(() => {
-    cameraFacingRef.current = cameraFacing;
-  }, [cameraFacing]);
-
-  useEffect(() => {
-    orientationRef.current = orientation;
-  }, [orientation]);
-
-  useEffect(() => {
-    const refreshOrientation = () => {
-      setOrientation(getViewportOrientation());
-    };
-
-    refreshOrientation();
-    window.addEventListener("orientationchange", refreshOrientation);
-    window.addEventListener("resize", refreshOrientation);
-
-    return () => {
-      window.removeEventListener("orientationchange", refreshOrientation);
-      window.removeEventListener("resize", refreshOrientation);
-    };
-  }, []);
+    try {
+      const state = await fetchLivestreamState(auctionId);
+      applyState(state);
+    } catch {
+      // Ignore transient refresh failures.
+    }
+  }, [applyState, auctionId, canHost]);
 
   useEffect(() => {
     if (!canHost) {
       return;
     }
 
-    const refreshDevices = async () => {
-      try {
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const cameras = devices.filter(
-          (device) => device.kind === "videoinput" && Boolean(device.deviceId),
-        );
-        setAvailableCameras(cameras);
-      } catch {
-        // ignore
-      }
-    };
+    void refreshState();
+  }, [canHost, refreshState]);
 
-    void refreshDevices();
+  useEffect(() => {
+    clearRefreshTimer();
+    if (!session) {
+      return;
+    }
 
-    const onDeviceChange = () => {
-      void refreshDevices();
-    };
-
-    navigator.mediaDevices.addEventListener?.("devicechange", onDeviceChange);
+    refreshTimerRef.current = setInterval(() => {
+      void refreshState();
+    }, REFRESH_INTERVAL_MS);
 
     return () => {
-      navigator.mediaDevices.removeEventListener?.("devicechange", onDeviceChange);
+      clearRefreshTimer();
     };
-  }, [canHost]);
+  }, [clearRefreshTimer, refreshState, session]);
 
-  const refreshViewerCount = useCallback(async () => {
-    try {
-      const data = await fetchLivestreamState(auctionId);
-      if (data.session) {
-        setViewerCount(data.session.viewer_count ?? 0);
-      } else {
-        setViewerCount(0);
-      }
-    } catch {
-      // Ignore transient refresh failures.
-    }
-  }, [auctionId]);
-
-  const resolveNetworkAdjustedQuality = useCallback((preset: LivestreamQualityPreset) => {
-    if (typeof navigator === "undefined") {
-      return preset;
-    }
-
-    const connection = (navigator as Navigator & {
-      connection?: { downlink?: number; effectiveType?: string };
-    }).connection;
-
-    if (!connection || preset !== "full_hd_1080") {
-      return preset;
-    }
-
-    const downlink = connection.downlink ?? 10;
-    const effectiveType = (connection.effectiveType ?? "").toLowerCase();
-    const lowBandwidth =
-      downlink < 5 || effectiveType.includes("2g") || effectiveType.includes("3g");
-
-    if (lowBandwidth) {
-      return "hd_720";
-    }
-
-    return preset;
-  }, []);
-
-  const buildCaptureConstraints = useCallback((options?: {
-    quality?: LivestreamQualityPreset;
-    cameraId?: string;
-    facing?: LivestreamCameraFacing;
-    orientation?: LivestreamOrientation;
-  }) => {
-    const requestedQuality = options?.quality ?? qualityRef.current;
-    const effectiveQuality = resolveNetworkAdjustedQuality(requestedQuality);
-    const cameraId = options?.cameraId ?? selectedCameraIdRef.current;
-    const cameraFacingValue = options?.facing ?? cameraFacingRef.current;
-    const orientationValue = options?.orientation ?? orientationRef.current;
-
-    return {
-      effectiveQuality,
-      constraints: getVideoConstraints(effectiveQuality, {
-        deviceId: cameraId && cameraId !== "auto" ? cameraId : undefined,
-        facingMode: cameraFacingValue,
-        orientation: orientationValue,
-      }),
+  useEffect(() => {
+    return () => {
+      clearRefreshTimer();
     };
-  }, [resolveNetworkAdjustedQuality]);
-
-  const applyVideoSenderProfile = useCallback(async (targetQuality: LivestreamQualityPreset) => {
-    const bitrateProfile = getVideoBitratePreset(targetQuality);
-
-    await Promise.all(
-      Array.from(peersRef.current.values()).map(async (peer) => {
-        const sender = peer.getSenders().find((item) => item.track?.kind === "video");
-        if (!sender || typeof sender.getParameters !== "function") {
-          return;
-        }
-
-        const parameters = sender.getParameters();
-        const currentEncodings = parameters.encodings && parameters.encodings.length > 0
-          ? parameters.encodings
-          : [{}];
-
-        const nextParameters: RTCRtpSendParameters = {
-          ...parameters,
-          encodings: currentEncodings.map((encoding, index) =>
-            index === 0
-              ? {
-                  ...encoding,
-                  maxBitrate: bitrateProfile.maxBitrate,
-                  maxFramerate: bitrateProfile.maxFramerate,
-                  networkPriority: "high",
-                }
-              : encoding,
-          ),
-        };
-
-        await sender.setParameters(nextParameters).catch(() => undefined);
-      }),
-    );
-  }, []);
-
-  const replaceVideoTrack = useCallback(async (options?: {
-    cameraId?: string;
-    facing?: LivestreamCameraFacing;
-    quality?: LivestreamQualityPreset;
-    orientation?: LivestreamOrientation;
-  }) => {
-    if (!streamRef.current) {
-      return;
-    }
-
-    const { constraints, effectiveQuality } = buildCaptureConstraints(options);
-    const nextVideoStream = await navigator.mediaDevices.getUserMedia({
-      video: constraints,
-      audio: false,
-    });
-    const nextVideoTrack = nextVideoStream.getVideoTracks()[0];
-
-    if (!nextVideoTrack) {
-      throw new Error("Could not access camera");
-    }
-
-    nextVideoTrack.contentHint = "motion";
-
-    const currentStream = streamRef.current;
-    const previousVideoTracks = currentStream.getVideoTracks();
-    const audioTracks = currentStream.getAudioTracks();
-    const composedStream = new MediaStream([...audioTracks, nextVideoTrack]);
-
-    let committed = false;
-    try {
-      await Promise.all(
-        Array.from(peersRef.current.values()).map(async (peer) => {
-          const sender = peer.getSenders().find((item) => item.track?.kind === "video");
-          if (sender) {
-            await sender.replaceTrack(nextVideoTrack).catch(() => undefined);
-          }
-        }),
-      );
-
-      previousVideoTracks.forEach((track) => {
-        track.stop();
-        currentStream.removeTrack(track);
-      });
-
-      streamRef.current = composedStream;
-      setLocalStream(composedStream);
-      setEffectiveQualityPreset(effectiveQuality);
-      await applyVideoSenderProfile(effectiveQuality);
-      committed = true;
-    } finally {
-      if (!committed) {
-        nextVideoStream.getTracks().forEach((track) => track.stop());
-      } else {
-        nextVideoStream
-          .getTracks()
-          .filter((track) => track.id !== nextVideoTrack.id)
-          .forEach((track) => track.stop());
-      }
-    }
-  }, [applyVideoSenderProfile, buildCaptureConstraints]);
-
-  const applyTrackConstraints = useCallback(async () => {
-    const stream = streamRef.current;
-    const videoTrack = stream?.getVideoTracks()[0];
-    if (!videoTrack) {
-      return;
-    }
-
-    const { constraints, effectiveQuality } = buildCaptureConstraints();
-    const trackConstraints: MediaTrackConstraints = { ...constraints };
-    delete trackConstraints.deviceId;
-    delete trackConstraints.facingMode;
-
-    await videoTrack.applyConstraints(trackConstraints).catch(() => undefined);
-    setEffectiveQualityPreset(effectiveQuality);
-    await applyVideoSenderProfile(effectiveQuality);
-  }, [applyVideoSenderProfile, buildCaptureConstraints]);
-
-  const switchToCamera = useCallback(async (cameraId: string) => {
-    selectedCameraIdRef.current = cameraId;
-    setSelectedCameraId(cameraId);
-    setError(null);
-
-    if (status !== "live" || !streamRef.current) {
-      return;
-    }
-
-    try {
-      await replaceVideoTrack({ cameraId, facing: cameraFacingRef.current });
-    } catch (cameraError) {
-      setError(toUserErrorMessage(cameraError, "Failed to switch camera"));
-    }
-  }, [replaceVideoTrack, status]);
-
-  const flipCameraFacing = useCallback(async () => {
-    const nextFacing: LivestreamCameraFacing =
-      cameraFacingRef.current === "environment" ? "user" : "environment";
-
-    cameraFacingRef.current = nextFacing;
-    selectedCameraIdRef.current = "auto";
-    setCameraFacing(nextFacing);
-    setSelectedCameraId("auto");
-    setError(null);
-
-    if (status !== "live" || !streamRef.current) {
-      return;
-    }
-
-    try {
-      await replaceVideoTrack({ cameraId: "auto", facing: nextFacing });
-    } catch (cameraError) {
-      setError(toUserErrorMessage(cameraError, "Failed to flip camera"));
-    }
-  }, [replaceVideoTrack, status]);
-
-  const processSignal = useCallback(async (liveSession: LivestreamSession, signal: LivestreamSignal) => {
-    if (!streamRef.current) {
-      return;
-    }
-
-    if (signal.signal_type === "leave") {
-      const leavingViewerId = signal.from_user_id;
-      const peer = peersRef.current.get(leavingViewerId);
-      if (peer) {
-        peer.close();
-        peersRef.current.delete(leavingViewerId);
-      }
-      pendingIceCandidatesRef.current.delete(leavingViewerId);
-      return;
-    }
-
-    const viewerId = signal.from_user_id;
-    let peer = peersRef.current.get(viewerId);
-
-    if (!peer) {
-      peer = new RTCPeerConnection(LIVESTREAM_ICE_CONFIG);
-      streamRef.current.getTracks().forEach((track) => {
-        peer?.addTrack(track, streamRef.current as MediaStream);
-      });
-      void applyVideoSenderProfile(effectiveQualityPreset).catch(() => undefined);
-
-      peer.onicecandidate = (event) => {
-        if (!event.candidate) {
-          return;
-        }
-
-        void postJson(`/api/auctions/${auctionId}/livestream/signal`, {
-          session_id: liveSession.session_id,
-          participant_id: userId,
-          to_user_id: viewerId,
-          signal_type: "ice_candidate",
-          payload: event.candidate.toJSON(),
-        }).catch(() => undefined);
-      };
-
-      peer.onconnectionstatechange = () => {
-        if (!peer) {
-          return;
-        }
-
-        if (peer.connectionState === "failed" || peer.connectionState === "closed") {
-          peersRef.current.delete(viewerId);
-          pendingIceCandidatesRef.current.delete(viewerId);
-        }
-      };
-
-      peersRef.current.set(viewerId, peer);
-    }
-
-    if (signal.signal_type === "offer") {
-      const offer = toSessionDescription(signal.payload);
-      if (!offer) {
-        return;
-      }
-
-      await peer.setRemoteDescription(offer);
-      const queued = pendingIceCandidatesRef.current.get(viewerId) ?? [];
-      if (queued.length > 0) {
-        pendingIceCandidatesRef.current.delete(viewerId);
-        for (const queuedCandidate of queued) {
-          await peer.addIceCandidate(queuedCandidate).catch(() => undefined);
-        }
-      }
-      const answer = await peer.createAnswer();
-      await peer.setLocalDescription(answer);
-
-      await postJson(`/api/auctions/${auctionId}/livestream/signal`, {
-        session_id: liveSession.session_id,
-        participant_id: userId,
-        to_user_id: viewerId,
-        signal_type: "answer",
-        payload: {
-          type: answer.type,
-          sdp: answer.sdp,
-        },
-      });
-      return;
-    }
-
-    if (signal.signal_type === "ice_candidate") {
-      const candidate = toIceCandidate(signal.payload);
-      if (candidate) {
-        if (peer.currentRemoteDescription) {
-          await peer.addIceCandidate(candidate).catch(() => undefined);
-        } else {
-          const queued = pendingIceCandidatesRef.current.get(viewerId) ?? [];
-          queued.push(candidate);
-          pendingIceCandidatesRef.current.set(viewerId, queued);
-        }
-      }
-    }
-  }, [applyVideoSenderProfile, auctionId, effectiveQualityPreset, userId]);
-
-  const startSignalPolling = useCallback((liveSession: LivestreamSession) => {
-    const poll = async () => {
-      if (signalPollingRef.current) {
-        return;
-      }
-
-      signalPollingRef.current = true;
-      try {
-        const signals = await fetchSignals({
-          auctionId,
-          sessionId: liveSession.session_id,
-          participantId: userId,
-          since: sinceRef.current,
-        });
-
-        if (signals.length > 0) {
-          const lastCreatedAt = signals[signals.length - 1]?.created_at;
-          if (lastCreatedAt) {
-            sinceRef.current = nextSinceCursor(lastCreatedAt);
-          }
-
-          const unseenSignals = signals.filter((signal) => {
-            if (seenSignalsRef.current.has(signal.id)) {
-              return false;
-            }
-            seenSignalsRef.current.add(signal.id);
-            return true;
-          });
-
-          if (seenSignalsRef.current.size > RECENT_SIGNAL_CACHE_SIZE) {
-            const excess = seenSignalsRef.current.size - RECENT_SIGNAL_CACHE_SIZE;
-            const iterator = seenSignalsRef.current.values();
-            for (let index = 0; index < excess; index += 1) {
-              const item = iterator.next();
-              if (item.done) {
-                break;
-              }
-              seenSignalsRef.current.delete(item.value);
-            }
-          }
-
-          for (const signal of unseenSignals) {
-            await processSignal(liveSession, signal);
-          }
-        }
-      } catch {
-        // Ignore transient signal polling failures.
-      } finally {
-        signalPollingRef.current = false;
-      }
-    };
-
-    if (signalPollRef.current) {
-      clearInterval(signalPollRef.current);
-    }
-    signalPollRef.current = setInterval(() => {
-      void poll();
-    }, SIGNAL_POLL_INTERVAL_MS);
-    void poll();
-  }, [auctionId, processSignal, userId]);
+  }, [clearRefreshTimer]);
 
   const start = useCallback(async () => {
     if (!canHost || status === "live" || status === "starting") {
@@ -658,73 +213,58 @@ export function useAuctionLivestreamHost({
     setError(null);
 
     try {
-      const { constraints, effectiveQuality } = buildCaptureConstraints();
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: constraints,
-        audio: audioEnabled,
+      const payload = (await postJson(`/api/seller/auctions/${auctionId}/livestream/start`, {
+        audio_enabled: audioEnabled,
+        max_viewers: DEFAULT_MAX_VIEWERS,
+      })) as {
+        ok: true;
+        data: {
+          session_id: string;
+          auction_id: string;
+          host_user_id: string;
+          audio_enabled: boolean;
+          max_viewers: number;
+          started_at: string;
+          is_live: boolean;
+          mux_live_stream_id: string | null;
+          mux_playback_id: string | null;
+          mux_stream_key: string | null;
+          mux_ingest_url: string | null;
+          mux_latency_mode: string | null;
+          playback_url: string | null;
+          playback_manifest_status?: number | null;
+        };
+      };
+
+      const started = payload.data;
+      setSession({
+        session_id: started.session_id,
+        auction_id: started.auction_id,
+        host_user_id: started.host_user_id,
+        audio_enabled: started.audio_enabled,
+        max_viewers: started.max_viewers,
+        started_at: started.started_at,
+        is_live: started.is_live,
+        mux_live_stream_id: started.mux_live_stream_id,
+        mux_playback_id: started.mux_playback_id,
+        mux_stream_key: started.mux_stream_key,
+        mux_ingest_url: started.mux_ingest_url,
+        mux_latency_mode: started.mux_latency_mode,
+        playback_url: started.playback_url,
+        mux_status: "idle",
+        playback_manifest_status: started.playback_manifest_status ?? null,
       });
-      stream.getVideoTracks().forEach((track) => {
-        track.contentHint = "motion";
-      });
-
-      streamRef.current = stream;
-      setLocalStream(stream);
-      setEffectiveQualityPreset(effectiveQuality);
-
-      let payload: { ok: true; data: LivestreamSession };
-      try {
-        payload = (await postJson(`/api/seller/auctions/${auctionId}/livestream/start`, {
-          audio_enabled: audioEnabled,
-          max_viewers: DEFAULT_MAX_VIEWERS,
-        })) as { ok: true; data: LivestreamSession };
-      } catch (startRequestError) {
-        const fallbackMessage =
-          startRequestError instanceof Error ? startRequestError.message.toLowerCase() : "";
-        const canFallback =
-          fallbackMessage.includes("max_viewers")
-          && fallbackMessage.includes("between 1 and 100");
-
-        if (!canFallback) {
-          throw startRequestError;
-        }
-
-        payload = (await postJson(`/api/seller/auctions/${auctionId}/livestream/start`, {
-          audio_enabled: audioEnabled,
-          max_viewers: LEGACY_MAX_VIEWERS,
-        })) as { ok: true; data: LivestreamSession };
-      }
-
-      const liveSession = payload.data;
-      setSession(liveSession);
+      setAudioEnabled(started.audio_enabled);
       setStatus("live");
-      sinceRef.current = SIGNAL_SINCE_FLOOR_ISO;
-      seenSignalsRef.current.clear();
+      setViewerCount(0);
 
-      startSignalPolling(liveSession);
-
-      sessionPollRef.current = setInterval(() => {
-        void refreshViewerCount();
-      }, 10000);
-
-      void refreshViewerCount();
+      void refreshState();
     } catch (startError) {
-      stopTracks();
-      cleanupConnections();
       setSession(null);
       setStatus("error");
       setError(toUserErrorMessage(startError, "Failed to start livestream"));
     }
-  }, [
-    auctionId,
-    audioEnabled,
-    buildCaptureConstraints,
-    canHost,
-    cleanupConnections,
-    refreshViewerCount,
-    startSignalPolling,
-    status,
-    stopTracks,
-  ]);
+  }, [audioEnabled, auctionId, canHost, refreshState, status]);
 
   const stop = useCallback(async () => {
     if (!session || status === "stopping") {
@@ -742,116 +282,51 @@ export function useAuctionLivestreamHost({
     } catch (stopError) {
       setError(toUserErrorMessage(stopError, "Failed to stop livestream"));
     } finally {
-      cleanupConnections();
-      stopTracks();
+      clearRefreshTimer();
       setSession(null);
       setViewerCount(0);
       setStatus("idle");
     }
-  }, [auctionId, cleanupConnections, session, status, stopTracks]);
+  }, [auctionId, clearRefreshTimer, session, status]);
 
   const toggleMic = useCallback((enabled: boolean) => {
     setAudioEnabled(enabled);
-
-    if (streamRef.current) {
-      streamRef.current.getAudioTracks().forEach((track) => {
-        track.enabled = enabled;
-      });
-    }
   }, []);
 
-  const updateQualityPreset = useCallback((preset: LivestreamQualityPreset) => {
-    setQualityPreset(preset);
-    setError(null);
-  }, []);
-
-  useEffect(() => {
-    setEffectiveQualityPreset(resolveNetworkAdjustedQuality(qualityPreset));
-    if (status !== "live") {
-      return;
-    }
-
-    void applyTrackConstraints();
-  }, [applyTrackConstraints, qualityPreset, resolveNetworkAdjustedQuality, status]);
-
-  useEffect(() => {
-    if (status !== "live") {
-      return;
-    }
-
-    void applyTrackConstraints();
-  }, [applyTrackConstraints, orientation, status]);
-
-  useEffect(() => {
-    const connection = (navigator as Navigator & {
-      connection?: {
-        addEventListener?: (type: "change", listener: () => void) => void;
-        removeEventListener?: (type: "change", listener: () => void) => void;
-      };
-    }).connection;
-
-    if (!connection?.addEventListener) {
-      return;
-    }
-
-    const onConnectionChange = () => {
-      setEffectiveQualityPreset(resolveNetworkAdjustedQuality(qualityRef.current));
-      if (status === "live") {
-        void applyTrackConstraints();
-      }
-    };
-
-    connection.addEventListener("change", onConnectionChange);
-    return () => {
-      connection.removeEventListener?.("change", onConnectionChange);
-    };
-  }, [applyTrackConstraints, resolveNetworkAdjustedQuality, status]);
-
-  useEffect(() => {
+  const connectionHealth = useMemo(() => {
     if (!session) {
-      return;
+      return "Offline";
     }
 
-    const stopIfLeaving = () => {
-      void stopLivestreamRequest(auctionId, true).catch(() => undefined);
-    };
+    if (session.host_user_id !== userId) {
+      return "Active stream is owned by another host";
+    }
 
-    window.addEventListener("pagehide", stopIfLeaving);
-    window.addEventListener("beforeunload", stopIfLeaving);
-
-    return () => {
-      window.removeEventListener("pagehide", stopIfLeaving);
-      window.removeEventListener("beforeunload", stopIfLeaving);
-    };
-  }, [auctionId, session]);
-
-  useEffect(() => {
-    return () => {
-      if (sessionRef.current) {
-        void stopLivestreamRequest(auctionId, true).catch(() => undefined);
+    if (session.mux_status === "active") {
+      if (session.playback_manifest_status === 204) {
+        return "Encoder connected, no media output";
       }
-      cleanupConnections();
-      stopTracks();
-    };
-  }, [auctionId, cleanupConnections, stopTracks]);
+      return "Live ingest connected";
+    }
+
+    if (session.mux_status === "idle") {
+      return "Waiting for encoder";
+    }
+
+    if (session.mux_status === "disabled") {
+      return "Stream disabled";
+    }
+
+    return "Checking stream status";
+  }, [session, userId]);
 
   return {
     status,
     error,
-    localStream,
     session,
     viewerCount,
-    qualityPreset,
-    effectiveQualityPreset,
-    setQualityPreset: updateQualityPreset,
     audioEnabled,
     toggleMic,
-    availableCameras,
-    selectedCameraId,
-    setSelectedCameraId: switchToCamera,
-    cameraFacing,
-    flipCameraFacing,
-    orientation,
     start,
     stop,
     connectionHealth,

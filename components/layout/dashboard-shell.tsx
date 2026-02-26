@@ -58,7 +58,7 @@ export async function DashboardShell({ children }: { children: React.ReactNode }
   );
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-brand-50/60 via-white to-white dark:from-slate-950 dark:via-slate-950 dark:to-slate-900">
+    <div className="dashboard-shell min-h-screen bg-gradient-to-b from-brand-50/60 via-white to-white text-slate-900 dark:from-slate-950 dark:via-slate-900 dark:to-slate-900 dark:text-slate-100">
       <header className="sticky top-0 z-30 border-b border-brand-100/80 bg-white/75 backdrop-blur-xl dark:border-brand-900/40 dark:bg-slate-950/70">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
           <Link href="/" className="text-sm font-semibold tracking-tight text-brand-800 dark:text-brand-200">

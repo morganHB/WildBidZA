@@ -21,24 +21,32 @@ export async function getOptionalAuthUserId() {
 }
 
 export async function resolveParticipantId(rawParticipantId?: string | null) {
+  const requestedParticipantId = rawParticipantId?.trim();
   const authUserId = await getOptionalAuthUserId();
   if (authUserId) {
+    if (requestedParticipantId && isUuid(requestedParticipantId)) {
+      // Allow per-device/per-tab participant IDs for authenticated viewers so
+      // multiple viewers can join simultaneously with the same account.
+      return { participantId: requestedParticipantId, authUserId };
+    }
+
     return { participantId: authUserId, authUserId };
   }
 
-  const participantId = rawParticipantId?.trim();
-  if (!participantId || !isUuid(participantId)) {
+  if (!requestedParticipantId || !isUuid(requestedParticipantId)) {
     throw new Error("Guest viewers must include a valid participant_id");
   }
 
-  return { participantId, authUserId: null as string | null };
+  return { participantId: requestedParticipantId, authUserId: null as string | null };
 }
 
 export async function loadLiveSessionByAuction(auctionId: string) {
   const admin = createSupabaseAdminClient() as any;
   const { data, error } = await admin
     .from("auction_livestream_sessions")
-    .select("id,auction_id,host_user_id,is_live,started_at,ended_at,audio_enabled,max_viewers,created_at,updated_at")
+    .select(
+      "id,auction_id,host_user_id,is_live,started_at,ended_at,audio_enabled,max_viewers,mux_live_stream_id,mux_playback_id,mux_stream_key,mux_ingest_url,mux_latency_mode,created_at,updated_at",
+    )
     .eq("auction_id", auctionId)
     .eq("is_live", true)
     .is("ended_at", null)
@@ -57,7 +65,9 @@ export async function loadLiveSessionById(sessionId: string) {
   const admin = createSupabaseAdminClient() as any;
   const { data, error } = await admin
     .from("auction_livestream_sessions")
-    .select("id,auction_id,host_user_id,is_live,started_at,ended_at,audio_enabled,max_viewers,created_at,updated_at")
+    .select(
+      "id,auction_id,host_user_id,is_live,started_at,ended_at,audio_enabled,max_viewers,mux_live_stream_id,mux_playback_id,mux_stream_key,mux_ingest_url,mux_latency_mode,created_at,updated_at",
+    )
     .eq("id", sessionId)
     .eq("is_live", true)
     .is("ended_at", null)
