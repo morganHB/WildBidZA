@@ -13,12 +13,12 @@ import type {
 } from "@/lib/validation/livestream";
 import type { SettingsUpdateInput } from "@/lib/validation/settings";
 import {
-  createMuxLiveStream,
-  disableMuxLiveStream,
-  isMuxConfigured,
-  retrieveMuxLiveStream,
-  toMuxPlaybackUrl,
-} from "@/lib/livestream/mux";
+  configureCloudflareLiveInputForLowLatency,
+  createCloudflareLiveInput,
+  isCloudflareConfigured,
+  retrieveCloudflareLiveInput,
+  toCloudflarePlaybackUrl,
+} from "@/lib/livestream/cloudflare";
 
 async function canManageAuction(
   supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
@@ -494,8 +494,10 @@ export async function startLivestream(params: {
     throw new Error("Not authorized to start livestream");
   }
 
-  if (!isMuxConfigured()) {
-    throw new Error("Mux is not configured. Set MUX_TOKEN_ID and MUX_TOKEN_SECRET.");
+  if (!isCloudflareConfigured()) {
+    throw new Error(
+      "Cloudflare Stream is not configured. Set CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_STREAM_API_TOKEN, and CLOUDFLARE_STREAM_CUSTOMER_CODE.",
+    );
   }
 
   const { data, error } = await supabase.rpc("start_livestream", {
@@ -533,15 +535,42 @@ export async function startLivestream(params: {
     let muxPlaybackId = sessionRow.mux_playback_id as string | null;
     let muxStreamKey = sessionRow.mux_stream_key as string | null;
     let muxIngestUrl = sessionRow.mux_ingest_url as string | null;
-    const muxLatencyMode = (sessionRow.mux_latency_mode as string | null) ?? "reduced";
+    let muxLatencyMode = (sessionRow.mux_latency_mode as string | null) ?? "standard";
+
+    if (!muxLiveStreamId || !muxPlaybackId || !muxStreamKey || !muxIngestUrl) {
+      const { data: previousSession, error: previousSessionError } = await admin
+        .from("auction_livestream_sessions")
+        .select("mux_live_stream_id,mux_playback_id,mux_stream_key,mux_ingest_url")
+        .eq("auction_id", params.auctionId)
+        .not("mux_live_stream_id", "is", null)
+        .neq("id", sessionId)
+        .order("started_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (previousSessionError) {
+        throw new Error(previousSessionError.message);
+      }
+
+      if (previousSession?.mux_live_stream_id) {
+        try {
+          const recovered = await retrieveCloudflareLiveInput(previousSession.mux_live_stream_id);
+          muxLiveStreamId = recovered.liveInputId;
+          muxPlaybackId = recovered.playbackId;
+          muxStreamKey = recovered.streamKey ?? (previousSession.mux_stream_key as string | null) ?? null;
+          muxIngestUrl = recovered.ingestUrl;
+        } catch {
+          // Ignore and create a new live input below.
+        }
+      }
+    }
 
     if (muxLiveStreamId && (!muxPlaybackId || !muxStreamKey || !muxIngestUrl)) {
       try {
-        const recovered = await retrieveMuxLiveStream(muxLiveStreamId);
+        const recovered = await retrieveCloudflareLiveInput(muxLiveStreamId);
         muxPlaybackId = recovered.playbackId;
         muxStreamKey = recovered.streamKey;
-        muxIngestUrl =
-          muxIngestUrl ?? process.env.MUX_RTMP_INGEST_URL?.trim() ?? "rtmp://global-live.mux.com:5222/app";
+        muxIngestUrl = recovered.ingestUrl;
       } catch {
         muxLiveStreamId = null;
         muxPlaybackId = null;
@@ -550,16 +579,20 @@ export async function startLivestream(params: {
       }
     }
 
+    if (muxLiveStreamId) {
+      await configureCloudflareLiveInputForLowLatency(muxLiveStreamId);
+      muxLatencyMode = "low";
+    }
+
     if (!muxLiveStreamId || !muxPlaybackId || !muxStreamKey || !muxIngestUrl) {
-      const createdMux = await createMuxLiveStream({
-        latencyMode: "reduced",
-        passthrough: params.auctionId,
+      const createdCloudflareInput = await createCloudflareLiveInput({
+        name: `auction-${params.auctionId}`,
       });
 
-      muxLiveStreamId = createdMux.liveStreamId;
-      muxPlaybackId = createdMux.playbackId;
-      muxStreamKey = createdMux.streamKey;
-      muxIngestUrl = createdMux.ingestUrl;
+      muxLiveStreamId = createdCloudflareInput.liveInputId;
+      muxPlaybackId = createdCloudflareInput.playbackId;
+      muxStreamKey = createdCloudflareInput.streamKey;
+      muxIngestUrl = createdCloudflareInput.ingestUrl;
 
       const { error: updateError } = await admin
         .from("auction_livestream_sessions")
@@ -568,7 +601,7 @@ export async function startLivestream(params: {
           mux_playback_id: muxPlaybackId,
           mux_stream_key: muxStreamKey,
           mux_ingest_url: muxIngestUrl,
-          mux_latency_mode: "reduced",
+          mux_latency_mode: muxLatencyMode,
           updated_at: new Date().toISOString(),
         })
         .eq("id", sessionId);
@@ -580,9 +613,11 @@ export async function startLivestream(params: {
       const { error: updateError } = await admin
         .from("auction_livestream_sessions")
         .update({
+          mux_live_stream_id: muxLiveStreamId,
           mux_playback_id: muxPlaybackId,
           mux_stream_key: muxStreamKey,
           mux_ingest_url: muxIngestUrl,
+          mux_latency_mode: muxLatencyMode,
           updated_at: new Date().toISOString(),
         })
         .eq("id", sessionId);
@@ -599,9 +634,9 @@ export async function startLivestream(params: {
       mux_stream_key: muxStreamKey,
       mux_ingest_url: muxIngestUrl,
       mux_latency_mode: muxLatencyMode,
-      playback_url: muxPlaybackId ? toMuxPlaybackUrl(muxPlaybackId) : null,
+      playback_url: muxPlaybackId ? toCloudflarePlaybackUrl(muxPlaybackId) : null,
     };
-  } catch (muxError) {
+  } catch (providerError) {
     try {
       await supabase.rpc("stop_livestream", {
         p_auction_id: params.auctionId,
@@ -610,7 +645,7 @@ export async function startLivestream(params: {
       // Ignore rollback failures.
     }
 
-    throw muxError instanceof Error ? muxError : new Error("Failed to initialize Mux livestream");
+    throw providerError instanceof Error ? providerError : new Error("Failed to initialize Cloudflare livestream");
   }
 }
 
@@ -620,29 +655,6 @@ export async function stopLivestream(params: { auctionId: string; actorId: strin
 
   if (!allowed) {
     throw new Error("Not authorized to stop livestream");
-  }
-
-  const admin = createSupabaseAdminClient() as any;
-  const { data: activeSession, error: activeSessionError } = await admin
-    .from("auction_livestream_sessions")
-    .select("id,mux_live_stream_id")
-    .eq("auction_id", params.auctionId)
-    .eq("is_live", true)
-    .is("ended_at", null)
-    .order("started_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (activeSessionError) {
-    throw new Error(activeSessionError.message);
-  }
-
-  if (activeSession?.mux_live_stream_id && isMuxConfigured()) {
-    try {
-      await disableMuxLiveStream(activeSession.mux_live_stream_id);
-    } catch {
-      // Do not block stop requests if the provider already ended or invalidated this stream.
-    }
   }
 
   const { data, error } = await supabase.rpc("stop_livestream", {

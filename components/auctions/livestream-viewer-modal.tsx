@@ -1,7 +1,5 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import Hls from "hls.js";
 import { LoaderCircle } from "lucide-react";
 import { useAuctionLivestreamViewer } from "@/hooks/use-auction-livestream-viewer";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -13,70 +11,36 @@ type ViewerModalProps = {
   onOpenChange: (open: boolean) => void;
 };
 
+function toCloudflareIframeUrl(playbackUrl: string | null) {
+  if (!playbackUrl) {
+    return null;
+  }
+
+  try {
+    const parsed = new URL(playbackUrl);
+    const parts = parsed.pathname.split("/").filter(Boolean);
+    if (parts.length < 3 || parts[1] !== "manifest") {
+      return null;
+    }
+
+    const streamId = parts[0];
+    parsed.pathname = `/${streamId}/iframe`;
+    parsed.search = "";
+    parsed.searchParams.set("protocol", "llhls");
+    parsed.hash = "";
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+}
+
 export function LivestreamViewerModal({ auctionId, userId, open, onOpenChange }: ViewerModalProps) {
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const hlsRef = useRef<Hls | null>(null);
-  const { status, error, playbackUrl, viewerCount } = useAuctionLivestreamViewer({
+  const { status, error, playbackUrl, streamReady, playbackLocked, viewerCount } = useAuctionLivestreamViewer({
     auctionId,
     userId,
     enabled: open,
   });
-
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video) {
-      return;
-    }
-
-    if (!playbackUrl) {
-      video.removeAttribute("src");
-      video.load();
-      hlsRef.current?.destroy();
-      hlsRef.current = null;
-      return;
-    }
-
-    if (Hls.isSupported()) {
-      hlsRef.current?.destroy();
-      const hls = new Hls({
-        enableWorker: true,
-        lowLatencyMode: true,
-        backBufferLength: 90,
-      });
-      hlsRef.current = hls;
-      hls.loadSource(playbackUrl);
-      hls.attachMedia(video);
-      hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        void video.play().catch(() => undefined);
-      });
-      hls.on(Hls.Events.ERROR, (_, data) => {
-        if (!data.fatal) {
-          return;
-        }
-
-        if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
-          hls.startLoad();
-          return;
-        }
-
-        if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
-          hls.recoverMediaError();
-          return;
-        }
-
-        hls.destroy();
-        hlsRef.current = null;
-      });
-    } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
-      video.src = playbackUrl;
-      void video.play().catch(() => undefined);
-    }
-
-    return () => {
-      hlsRef.current?.destroy();
-      hlsRef.current = null;
-    };
-  }, [playbackUrl]);
+  const iframeUrl = toCloudflareIframeUrl(playbackUrl);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -87,13 +51,19 @@ export function LivestreamViewerModal({ auctionId, userId, open, onOpenChange }:
         </DialogHeader>
 
         <div className="relative flex items-center justify-center bg-black">
-          <video
-            ref={videoRef}
-            autoPlay
-            playsInline
-            controls
-            className="h-[70vh] w-full max-h-[80vh] bg-black object-contain"
-          />
+          {iframeUrl && (streamReady || playbackLocked) ? (
+            <iframe
+              src={iframeUrl}
+              className="h-[70vh] w-full max-h-[80vh] border-0 bg-black"
+              allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+              allowFullScreen
+              title="Cloudflare livestream"
+            />
+          ) : (
+            <div className="flex h-[70vh] w-full max-h-[80vh] items-center justify-center bg-black text-sm text-slate-300">
+              Waiting for host video feed...
+            </div>
+          )}
 
           {status === "connecting" ? (
             <div className="absolute inset-0 flex items-center justify-center bg-black/65">
@@ -110,7 +80,11 @@ export function LivestreamViewerModal({ auctionId, userId, open, onOpenChange }:
           </div>
         ) : null}
 
-        {error ? <div className="px-5 pb-4 text-sm text-red-600">{error}</div> : null}
+        {error ? (
+          <div className={`px-5 pb-4 text-sm ${error.toLowerCase().includes("waiting for host video feed") ? "text-slate-500" : "text-red-600"}`}>
+            {error}
+          </div>
+        ) : null}
       </DialogContent>
     </Dialog>
   );

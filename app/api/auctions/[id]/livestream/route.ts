@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { getMuxLiveStreamStatus, toMuxPlaybackUrl } from "@/lib/livestream/mux";
+import { getCloudflareLiveInputStatus, toCloudflarePlaybackUrl } from "@/lib/livestream/cloudflare";
 import {
   assertAuctionJoinable,
   countActiveViewers,
@@ -10,6 +10,31 @@ import {
   resolveParticipantId,
   touchSession,
 } from "@/lib/livestream/server";
+
+function safeToPlaybackUrl(playbackId: string | null | undefined) {
+  if (!playbackId) {
+    return null;
+  }
+
+  try {
+    return toCloudflarePlaybackUrl(playbackId);
+  } catch {
+    return null;
+  }
+}
+
+async function probePlaybackManifestStatus(playbackUrl: string | null) {
+  if (!playbackUrl) {
+    return null;
+  }
+
+  try {
+    const response = await fetch(playbackUrl, { cache: "no-store" });
+    return response.status;
+  } catch {
+    return null;
+  }
+}
 
 export async function GET(_: Request, context: { params: Promise<{ id: string }> }) {
   try {
@@ -40,20 +65,27 @@ export async function GET(_: Request, context: { params: Promise<{ id: string }>
     }
 
     const isHost = Boolean(user?.id && session?.host_user_id && user.id === session.host_user_id);
-    const playbackUrl = session?.mux_playback_id ? toMuxPlaybackUrl(session.mux_playback_id) : null;
+    const playbackUrl = safeToPlaybackUrl(session?.mux_playback_id);
+    const statusInputId = session?.mux_live_stream_id ?? session?.mux_playback_id ?? null;
     let muxStatus: "active" | "idle" | "disabled" | null = null;
-    if (session?.mux_live_stream_id) {
+    if (statusInputId) {
       try {
-        muxStatus = await getMuxLiveStreamStatus(session.mux_live_stream_id);
+        muxStatus = await getCloudflareLiveInputStatus(statusInputId);
       } catch {
         muxStatus = null;
       }
     }
 
+    const manifestStatus = await probePlaybackManifestStatus(playbackUrl);
+    const providerIsLive = muxStatus === "active";
+    const streamReady = providerIsLive && manifestStatus === 200;
+
     return NextResponse.json({
       ok: true,
       data: {
         has_active_stream: Boolean(session),
+        stream_ready: streamReady,
+        playback_manifest_status: manifestStatus,
         can_view: true,
         can_host: Boolean(canHostResult.data),
         session: session
@@ -141,6 +173,32 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       throw new Error("Livestream is still preparing. Please try again in a few seconds.");
     }
 
+    const statusInputId = session.mux_live_stream_id ?? session.mux_playback_id;
+    if (!statusInputId) {
+      throw new Error("Livestream is still preparing. Please try again in a few seconds.");
+    }
+
+    let streamStatus: "active" | "idle" | "disabled" | null = null;
+    try {
+      streamStatus = await getCloudflareLiveInputStatus(statusInputId);
+    } catch {
+      streamStatus = null;
+    }
+
+    if (streamStatus === "disabled") {
+      throw new Error("Livestream is currently unavailable. Please ask the host to restart it.");
+    }
+
+    const playbackUrl = safeToPlaybackUrl(session.mux_playback_id);
+    if (!playbackUrl) {
+      throw new Error(
+        "Livestream playback URL is unavailable. Set CLOUDFLARE_STREAM_CUSTOMER_CODE and try again.",
+      );
+    }
+
+    const manifestStatus = await probePlaybackManifestStatus(playbackUrl);
+    const streamReady = streamStatus === "active" && manifestStatus === 200;
+
     return NextResponse.json({
       ok: true,
       data: {
@@ -153,8 +211,10 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         viewer_count: activeCount,
         started_at: session.started_at,
         is_live: session.is_live,
+        stream_ready: streamReady,
+        playback_manifest_status: manifestStatus,
         mux_playback_id: session.mux_playback_id,
-        playback_url: toMuxPlaybackUrl(session.mux_playback_id),
+        playback_url: playbackUrl,
       },
     });
   } catch (error) {
