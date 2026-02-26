@@ -25,6 +25,7 @@ export function AuctionLiveSection({
   isWinning,
   bids,
   currentUserId,
+  isAuthenticated = false,
   bidPricingMode,
   animalCount,
   isWaitingForPrevious,
@@ -40,6 +41,7 @@ export function AuctionLiveSection({
   isWinning: boolean;
   bids: BidRow[];
   currentUserId?: string;
+  isAuthenticated?: boolean;
   bidPricingMode?: "lot_total" | "per_head";
   animalCount?: number;
   isWaitingForPrevious?: boolean;
@@ -51,7 +53,10 @@ export function AuctionLiveSection({
     router.refresh();
   }, [router]);
 
-  useRealtimeAuction(auctionId, handleRefresh);
+  useRealtimeAuction(auctionId, handleRefresh, {
+    enabled: status === "live",
+    pollIntervalMs: 3000,
+  });
 
   return (
     <div className="space-y-6">
@@ -64,6 +69,7 @@ export function AuctionLiveSection({
         endTime={endTime}
         canBid={canBid}
         isWinning={isWinning}
+        isAuthenticated={isAuthenticated}
         bidPricingMode={bidPricingMode}
         animalCount={animalCount}
         isWaitingForPrevious={isWaitingForPrevious}

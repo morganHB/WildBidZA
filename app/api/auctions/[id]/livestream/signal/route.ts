@@ -3,11 +3,12 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { livestreamSignalSchema } from "@/lib/validation/livestream";
 import {
   assertHostSender,
-  isActiveViewer,
+  isJoinedViewer,
   isUuid,
   loadLiveSessionById,
   resolveParticipantId,
   touchSession,
+  touchViewerPresence,
 } from "@/lib/livestream/server";
 
 function parseSince(input: string | null) {
@@ -33,7 +34,7 @@ async function assertParticipant(params: {
     return true;
   }
 
-  return isActiveViewer(sessionId, participantId);
+  return isJoinedViewer(sessionId, participantId);
 }
 
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
@@ -65,6 +66,10 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
 
     if (!canRead) {
       throw new Error("Participant is not active in this livestream");
+    }
+
+    if (participantId !== session.host_user_id) {
+      await touchViewerPresence(session.id, participantId);
     }
 
     const sinceIso = parseSince(url.searchParams.get("since"));
@@ -131,16 +136,6 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       throw new Error("Sender is not an active participant in this session");
     }
 
-    const targetIsActive = await assertParticipant({
-      sessionId: session.id,
-      hostUserId: session.host_user_id,
-      participantId: parsed.data.to_user_id,
-    });
-
-    if (!targetIsActive) {
-      throw new Error("Target user is not an active participant in this session");
-    }
-
     const admin = createSupabaseAdminClient() as any;
     const { data, error } = await admin
       .from("auction_livestream_signals")
@@ -156,6 +151,10 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 
     if (error || !data) {
       throw new Error(error?.message ?? "Failed to publish signal");
+    }
+
+    if (participantId !== session.host_user_id) {
+      await touchViewerPresence(session.id, participantId);
     }
 
     await touchSession(session.id);
