@@ -23,6 +23,19 @@ function safeToPlaybackUrl(playbackId: string | null | undefined) {
   }
 }
 
+async function probePlaybackManifestStatus(playbackUrl: string | null) {
+  if (!playbackUrl) {
+    return null;
+  }
+
+  try {
+    const response = await fetch(playbackUrl, { cache: "no-store" });
+    return response.status;
+  } catch {
+    return null;
+  }
+}
+
 export async function GET(_: Request, context: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await context.params;
@@ -63,13 +76,16 @@ export async function GET(_: Request, context: { params: Promise<{ id: string }>
       }
     }
 
+    const manifestStatus = await probePlaybackManifestStatus(playbackUrl);
     const providerIsLive = muxStatus === "active";
+    const streamReady = providerIsLive && manifestStatus === 200;
 
     return NextResponse.json({
       ok: true,
       data: {
         has_active_stream: Boolean(session),
-        stream_ready: providerIsLive,
+        stream_ready: streamReady,
+        playback_manifest_status: manifestStatus,
         can_view: true,
         can_host: Boolean(canHostResult.data),
         session: session
@@ -180,6 +196,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       );
     }
 
+    const manifestStatus = await probePlaybackManifestStatus(playbackUrl);
+    const streamReady = streamStatus === "active" && manifestStatus === 200;
+
     return NextResponse.json({
       ok: true,
       data: {
@@ -192,7 +211,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         viewer_count: activeCount,
         started_at: session.started_at,
         is_live: session.is_live,
-        stream_ready: streamStatus === "active",
+        stream_ready: streamReady,
+        playback_manifest_status: manifestStatus,
         mux_playback_id: session.mux_playback_id,
         playback_url: playbackUrl,
       },
