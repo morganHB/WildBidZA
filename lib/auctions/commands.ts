@@ -13,6 +13,7 @@ import type {
 } from "@/lib/validation/livestream";
 import type { SettingsUpdateInput } from "@/lib/validation/settings";
 import {
+  configureCloudflareLiveInputForLowLatency,
   createCloudflareLiveInput,
   isCloudflareConfigured,
   retrieveCloudflareLiveInput,
@@ -534,7 +535,7 @@ export async function startLivestream(params: {
     let muxPlaybackId = sessionRow.mux_playback_id as string | null;
     let muxStreamKey = sessionRow.mux_stream_key as string | null;
     let muxIngestUrl = sessionRow.mux_ingest_url as string | null;
-    const muxLatencyMode = (sessionRow.mux_latency_mode as string | null) ?? "standard";
+    let muxLatencyMode = (sessionRow.mux_latency_mode as string | null) ?? "standard";
 
     if (!muxLiveStreamId || !muxPlaybackId || !muxStreamKey || !muxIngestUrl) {
       const { data: previousSession, error: previousSessionError } = await admin
@@ -578,6 +579,11 @@ export async function startLivestream(params: {
       }
     }
 
+    if (muxLiveStreamId) {
+      await configureCloudflareLiveInputForLowLatency(muxLiveStreamId);
+      muxLatencyMode = "low";
+    }
+
     if (!muxLiveStreamId || !muxPlaybackId || !muxStreamKey || !muxIngestUrl) {
       const createdCloudflareInput = await createCloudflareLiveInput({
         name: `auction-${params.auctionId}`,
@@ -595,7 +601,7 @@ export async function startLivestream(params: {
           mux_playback_id: muxPlaybackId,
           mux_stream_key: muxStreamKey,
           mux_ingest_url: muxIngestUrl,
-          mux_latency_mode: "standard",
+          mux_latency_mode: muxLatencyMode,
           updated_at: new Date().toISOString(),
         })
         .eq("id", sessionId);
@@ -611,6 +617,7 @@ export async function startLivestream(params: {
           mux_playback_id: muxPlaybackId,
           mux_stream_key: muxStreamKey,
           mux_ingest_url: muxIngestUrl,
+          mux_latency_mode: muxLatencyMode,
           updated_at: new Date().toISOString(),
         })
         .eq("id", sessionId);

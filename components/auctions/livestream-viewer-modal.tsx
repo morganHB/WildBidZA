@@ -26,6 +26,7 @@ function toCloudflareIframeUrl(playbackUrl: string | null) {
     const streamId = parts[0];
     parsed.pathname = `/${streamId}/iframe`;
     parsed.search = "";
+    parsed.searchParams.set("protocol", "llhls");
     parsed.hash = "";
     return parsed.toString();
   } catch {

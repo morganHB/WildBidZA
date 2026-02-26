@@ -123,6 +123,10 @@ export async function createCloudflareLiveInput(params?: { name?: string }) {
     method: "POST",
     body: JSON.stringify({
       meta: params?.name ? { name: params.name } : undefined,
+      preferLowLatency: true,
+      recording: {
+        mode: "automatic",
+      },
     }),
   });
 
@@ -165,6 +169,23 @@ export async function retrieveCloudflareLiveInput(liveInputId: string) {
     ingestUrl,
     playbackUrl: resolvedLiveInputId ? toCloudflarePlaybackUrl(resolvedLiveInputId) : null,
   };
+}
+
+export async function configureCloudflareLiveInputForLowLatency(liveInputId: string) {
+  try {
+    await cloudflareApiRequest<CloudflareLiveInput>(`/live_inputs/${liveInputId}`, {
+      method: "PUT",
+      body: JSON.stringify({
+        enabled: true,
+        preferLowLatency: true,
+        recording: {
+          mode: "automatic",
+        },
+      }),
+    });
+  } catch {
+    // Non-fatal: stream can still work, just with higher or inconsistent latency.
+  }
 }
 
 async function fetchCloudflareLifecycleStatus(liveInputId: string) {
