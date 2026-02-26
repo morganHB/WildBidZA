@@ -67,7 +67,8 @@ export async function GET(_: Request, context: { params: Promise<{ id: string }>
     return NextResponse.json({
       ok: true,
       data: {
-        has_active_stream: Boolean(session) && providerIsLive,
+        has_active_stream: Boolean(session),
+        stream_ready: providerIsLive,
         can_view: true,
         can_host: Boolean(canHostResult.data),
         session: session

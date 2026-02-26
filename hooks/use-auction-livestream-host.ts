@@ -136,7 +136,6 @@ export function useAuctionLivestreamHost({
   const [audioEnabled, setAudioEnabled] = useState(true);
 
   const refreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const sessionRef = useRef<HostSession | null>(null);
 
   const clearRefreshTimer = useCallback(() => {
     if (refreshTimerRef.current) {
@@ -173,10 +172,6 @@ export function useAuctionLivestreamHost({
   }, [applyState, auctionId, canHost]);
 
   useEffect(() => {
-    sessionRef.current = session;
-  }, [session]);
-
-  useEffect(() => {
     if (!canHost) {
       return;
     }
@@ -200,31 +195,10 @@ export function useAuctionLivestreamHost({
   }, [clearRefreshTimer, refreshState, session]);
 
   useEffect(() => {
-    if (!session) {
-      return;
-    }
-
-    const stopIfLeaving = () => {
-      void stopLivestreamRequest(auctionId, true).catch(() => undefined);
-    };
-
-    window.addEventListener("pagehide", stopIfLeaving);
-    window.addEventListener("beforeunload", stopIfLeaving);
-
     return () => {
-      window.removeEventListener("pagehide", stopIfLeaving);
-      window.removeEventListener("beforeunload", stopIfLeaving);
-    };
-  }, [auctionId, session]);
-
-  useEffect(() => {
-    return () => {
-      if (sessionRef.current) {
-        void stopLivestreamRequest(auctionId, true).catch(() => undefined);
-      }
       clearRefreshTimer();
     };
-  }, [auctionId, clearRefreshTimer]);
+  }, [clearRefreshTimer]);
 
   const start = useCallback(async () => {
     if (!canHost || status === "live" || status === "starting") {
