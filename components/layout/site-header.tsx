@@ -4,6 +4,7 @@ import { CircleUserRound, LayoutDashboard, Menu, X } from "lucide-react";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { isAdmin, isApprovedSeller } from "@/lib/auth/roles";
 import { getUnreadNotificationCount } from "@/lib/notifications/service";
+import { ModeToggle } from "@/components/layout/mode-toggle";
 import { Button } from "@/components/ui/button";
 import { NotificationBell } from "@/components/layout/notification-bell";
 
@@ -42,8 +43,8 @@ export async function SiteHeader() {
               <Image src="/noordkaap_logo_transparent.png" alt="Noordkaap logo" fill sizes="40px" className="object-contain p-1" />
             </span>
             <span className="text-sm font-black uppercase italic leading-tight tracking-tight text-stone-900 sm:text-base">
-              Lewendehawe
-              <span className="ml-1 text-red-700">Noordkaap</span>
+              Noordkaap
+              <span className="ml-1 text-red-700">Lewende Hawe</span>
             </span>
           </Link>
 
@@ -62,8 +63,14 @@ export async function SiteHeader() {
           <div className="hidden items-center gap-2 sm:flex">
             {user ? (
               <>
+                <ModeToggle />
                 <NotificationBell userId={user.id} initialUnreadCount={unreadCount} />
-                <Button asChild size="sm" variant="outline" className="rounded-xl border-stone-300 px-4">
+                <Button
+                  asChild
+                  size="sm"
+                  variant="outline"
+                  className="rounded-xl border-stone-300 px-4 dark:!border-slate-700 dark:!bg-slate-800 dark:!text-slate-100 dark:hover:!bg-slate-700"
+                >
                   <Link href={accountHref}>
                     {showDashboard ? <LayoutDashboard className="mr-2 h-4 w-4" /> : <CircleUserRound className="mr-2 h-4 w-4" />}
                     {accountLabel}
@@ -116,12 +123,17 @@ export async function SiteHeader() {
                   Live Now
                 </Link>
                 {user ? (
-                  <Link
-                    href={accountHref}
-                    className="rounded-xl border border-stone-300 px-3 py-2 text-center text-[11px] font-black uppercase tracking-[0.18em] text-stone-800"
-                  >
-                    {accountLabel}
-                  </Link>
+                  <>
+                    <Link
+                      href={accountHref}
+                      className="rounded-xl border border-stone-300 px-3 py-2 text-center text-[11px] font-black uppercase tracking-[0.18em] text-stone-800 dark:!border-slate-700 dark:!bg-slate-800 dark:!text-slate-100"
+                    >
+                      {accountLabel}
+                    </Link>
+                    <div className="mt-1 flex justify-end">
+                      <ModeToggle />
+                    </div>
+                  </>
                 ) : (
                   <Link
                     href="/sign-in"

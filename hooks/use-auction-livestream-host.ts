@@ -19,10 +19,13 @@ type HostSession = {
   mux_latency_mode: string | null;
   playback_url: string | null;
   mux_status: "active" | "idle" | "disabled" | null;
+  playback_manifest_status?: number | null;
 };
 
 type StatePayload = {
   has_active_stream: boolean;
+  stream_ready?: boolean;
+  playback_manifest_status?: number | null;
   can_host: boolean;
   session: {
     id: string;
@@ -117,6 +120,7 @@ function toHostSession(state: StatePayload) {
     mux_latency_mode: state.session.mux_latency_mode,
     playback_url: state.session.playback_url,
     mux_status: state.session.mux_status,
+    playback_manifest_status: state.playback_manifest_status ?? null,
   } satisfies HostSession;
 }
 
@@ -136,7 +140,6 @@ export function useAuctionLivestreamHost({
   const [audioEnabled, setAudioEnabled] = useState(true);
 
   const refreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const sessionRef = useRef<HostSession | null>(null);
 
   const clearRefreshTimer = useCallback(() => {
     if (refreshTimerRef.current) {
@@ -173,10 +176,6 @@ export function useAuctionLivestreamHost({
   }, [applyState, auctionId, canHost]);
 
   useEffect(() => {
-    sessionRef.current = session;
-  }, [session]);
-
-  useEffect(() => {
     if (!canHost) {
       return;
     }
@@ -200,31 +199,10 @@ export function useAuctionLivestreamHost({
   }, [clearRefreshTimer, refreshState, session]);
 
   useEffect(() => {
-    if (!session) {
-      return;
-    }
-
-    const stopIfLeaving = () => {
-      void stopLivestreamRequest(auctionId, true).catch(() => undefined);
-    };
-
-    window.addEventListener("pagehide", stopIfLeaving);
-    window.addEventListener("beforeunload", stopIfLeaving);
-
     return () => {
-      window.removeEventListener("pagehide", stopIfLeaving);
-      window.removeEventListener("beforeunload", stopIfLeaving);
-    };
-  }, [auctionId, session]);
-
-  useEffect(() => {
-    return () => {
-      if (sessionRef.current) {
-        void stopLivestreamRequest(auctionId, true).catch(() => undefined);
-      }
       clearRefreshTimer();
     };
-  }, [auctionId, clearRefreshTimer]);
+  }, [clearRefreshTimer]);
 
   const start = useCallback(async () => {
     if (!canHost || status === "live" || status === "starting") {
@@ -254,6 +232,7 @@ export function useAuctionLivestreamHost({
           mux_ingest_url: string | null;
           mux_latency_mode: string | null;
           playback_url: string | null;
+          playback_manifest_status?: number | null;
         };
       };
 
@@ -273,6 +252,7 @@ export function useAuctionLivestreamHost({
         mux_latency_mode: started.mux_latency_mode,
         playback_url: started.playback_url,
         mux_status: "idle",
+        playback_manifest_status: started.playback_manifest_status ?? null,
       });
       setAudioEnabled(started.audio_enabled);
       setStatus("live");
@@ -323,6 +303,9 @@ export function useAuctionLivestreamHost({
     }
 
     if (session.mux_status === "active") {
+      if (session.playback_manifest_status === 204) {
+        return "Encoder connected, no media output";
+      }
       return "Live ingest connected";
     }
 
