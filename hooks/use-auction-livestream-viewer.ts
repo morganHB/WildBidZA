@@ -132,12 +132,14 @@ export function useAuctionLivestreamViewer({
   const [participantId, setParticipantId] = useState<string | null>(null);
   const [playbackUrl, setPlaybackUrl] = useState<string | null>(null);
   const [streamReady, setStreamReady] = useState(false);
+  const [playbackLocked, setPlaybackLocked] = useState(false);
 
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const stateRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const leaveSessionRef = useRef<string | null>(null);
   const retryAttemptRef = useRef(0);
+  const playbackLockedRef = useRef(false);
 
   useEffect(() => {
     setParticipantId(getViewerParticipantId());
@@ -174,6 +176,8 @@ export function useAuctionLivestreamViewer({
     setSessionId(null);
     setPlaybackUrl(null);
     setStreamReady(false);
+    playbackLockedRef.current = false;
+    setPlaybackLocked(false);
   }, [auctionId, clearTimers, participantId]);
 
   useEffect(() => {
@@ -184,6 +188,8 @@ export function useAuctionLivestreamViewer({
       setError(null);
       setViewerCount(0);
       setStreamReady(false);
+      playbackLockedRef.current = false;
+      setPlaybackLocked(false);
       return;
     }
 
@@ -246,11 +252,23 @@ export function useAuctionLivestreamViewer({
         }
 
         const ready = Boolean(state.stream_ready);
-        setStreamReady(ready);
         if (ready) {
+          setStreamReady(true);
+          playbackLockedRef.current = true;
+          setPlaybackLocked(true);
+          setStatus("live");
+          setError(null);
+          return;
+        }
+
+        // Cloudflare stream status can briefly flap between connected/disconnected.
+        // Once playback has been established, keep the viewer in live mode.
+        if (playbackLockedRef.current) {
+          setStreamReady(true);
           setStatus("live");
           setError(null);
         } else {
+          setStreamReady(false);
           setStatus("connecting");
           setError("Waiting for host stream to connect...");
         }
@@ -284,6 +302,8 @@ export function useAuctionLivestreamViewer({
         setPlaybackUrl(joined.playback_url);
         const ready = Boolean(joined.stream_ready);
         setStreamReady(ready);
+        playbackLockedRef.current = ready;
+        setPlaybackLocked(ready);
         if (ready) {
           setStatus("live");
           setError(null);
@@ -328,6 +348,7 @@ export function useAuctionLivestreamViewer({
     error,
     playbackUrl,
     streamReady,
+    playbackLocked,
     viewerCount,
     sessionId,
   };
