@@ -22,6 +22,17 @@ type CloudflareLiveInput = {
   };
 };
 
+type CloudflareLifecycle = {
+  isInput?: boolean;
+  videoUID?: string | null;
+  live?: boolean;
+};
+
+type CloudflareLiveInputVideo = {
+  uid?: string;
+  status?: string;
+};
+
 export type CloudflareLiveInputDetails = {
   liveInputId: string;
   playbackId: string;
@@ -154,6 +165,9 @@ async function fetchCloudflareLifecycleStatus(liveInputId: string) {
   }
 
   const response = await fetch(`https://customer-${customerCode}.cloudflarestream.com/${liveInputId}/lifecycle`, {
+    headers: {
+      Authorization: `Bearer ${getCloudflareApiToken()}`,
+    },
     cache: "no-store",
   });
 
@@ -161,12 +175,29 @@ async function fetchCloudflareLifecycleStatus(liveInputId: string) {
     return null;
   }
 
-  const payload = (await response.json().catch(() => null)) as { live?: boolean } | null;
+  const payload = (await response.json().catch(() => null)) as CloudflareLifecycle | null;
   if (!payload || typeof payload.live !== "boolean") {
     return null;
   }
 
   return payload.live ? "active" : "idle";
+}
+
+async function fetchCloudflareLiveInputVideoStatus(liveInputId: string) {
+  try {
+    const videos = await cloudflareApiRequest<CloudflareLiveInputVideo[]>(`/live_inputs/${liveInputId}/videos`, {
+      method: "GET",
+    });
+
+    const activeVideo = videos.find((video) => {
+      const status = video.status?.toLowerCase() ?? "";
+      return status.includes("live") || status === "inprogress" || status === "live-inprogress";
+    });
+
+    return activeVideo ? "active" : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function disableCloudflareLiveInput(liveInputId: string) {
@@ -195,6 +226,11 @@ export async function getCloudflareLiveInputStatus(liveInputId: string) {
   const lifecycleStatus = await fetchCloudflareLifecycleStatus(liveInputId);
   if (lifecycleStatus) {
     return lifecycleStatus;
+  }
+
+  const videoStatus = await fetchCloudflareLiveInputVideoStatus(liveInputId);
+  if (videoStatus) {
+    return videoStatus;
   }
 
   return "idle" satisfies LivestreamStatus;
