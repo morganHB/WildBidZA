@@ -67,6 +67,13 @@ function toUserErrorMessage(error: unknown, fallback: string) {
   if (/auth session missing|unauthorized/i.test(message)) {
     return "Unable to authenticate this stream request.";
   }
+  if (
+    /host encoder is not live|still preparing|temporarily unavailable|request failed|unknown error|no active livestream/i.test(
+      message,
+    )
+  ) {
+    return "Waiting for host video feed...";
+  }
   return message || fallback;
 }
 
@@ -192,7 +199,11 @@ export function useAuctionLivestreamViewer({
       const delay = getReconnectDelayMs(attempt);
 
       setStatus("connecting");
-      setError(`${reason} Retrying...`);
+      if (/auction has ended|livestream has ended/i.test(reason.toLowerCase())) {
+        setError(reason);
+      } else {
+        setError("Waiting for host video feed...");
+      }
 
       reconnectTimeoutRef.current = setTimeout(() => {
         reconnectTimeoutRef.current = null;
