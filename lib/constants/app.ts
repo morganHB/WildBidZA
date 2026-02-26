@@ -1,5 +1,6 @@
-export const APP_NAME = "WildBidZA";
-export const APP_DESCRIPTION = "Premium South African livestock auction marketplace.";
+export const APP_NAME = "LIBA Auctioneers";
+export const APP_DESCRIPTION =
+  "Modern livestock marketing, kraal bookings, and live online auctions for the Vaalharts farming community.";
 export const APP_CURRENCY = "ZAR";
 export const APP_LOCALE = "en-ZA";
 export const APP_TIMEZONE = "Africa/Johannesburg";

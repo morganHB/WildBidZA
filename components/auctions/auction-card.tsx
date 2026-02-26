@@ -65,9 +65,15 @@ export function AuctionCard({ auction }: { auction: AuctionCardData }) {
   const packetTotal = isPerHead
     ? auction.current_price * Math.max(1, auction.animal_count ?? 1)
     : auction.current_price;
+  const ctaLabel =
+    auction.status === "ended"
+      ? "View result"
+      : auction.status === "upcoming"
+        ? "View lot"
+        : "Place bid";
 
   return (
-    <Card className="group overflow-hidden rounded-3xl border-slate-200/90 bg-white/95 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-brand-100/60 dark:border-slate-800 dark:bg-slate-950/80 dark:hover:shadow-none">
+    <Card className="group overflow-hidden rounded-[2rem] border-stone-200 bg-white shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-stone-200/70">
       <Link href={`/auctions/${auction.id}`} className="block">
         <div className="relative aspect-[5/4] overflow-hidden">
           {imagePath ? (
@@ -100,8 +106,8 @@ export function AuctionCard({ auction }: { auction: AuctionCardData }) {
               sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
             />
           )}
-          <div className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-full bg-white/95 px-2.5 py-1 text-[11px] font-semibold text-slate-700 shadow-sm dark:bg-slate-950/90 dark:text-slate-200">
-            <Clock3 className="h-3 w-3 text-brand-600" />
+          <div className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-full bg-white/95 px-2.5 py-1 text-[11px] font-semibold text-stone-700 shadow-sm">
+            <Clock3 className="h-3 w-3 text-red-700" />
             {timingLabel}
           </div>
           {!imagePath && videoUrl ? (
@@ -122,7 +128,7 @@ export function AuctionCard({ auction }: { auction: AuctionCardData }) {
       </Link>
       <CardHeader className="space-y-3 pb-2">
         <div className="flex items-center justify-between gap-3">
-          <p className="truncate text-xs font-bold uppercase tracking-[0.18em] text-brand-700 dark:text-brand-300">
+          <p className="truncate text-xs font-bold uppercase tracking-[0.18em] text-red-700">
             {auction.category?.name ?? "Uncategorized"}
           </p>
           <p className="flex items-center gap-1 text-xs text-slate-500">
@@ -132,35 +138,35 @@ export function AuctionCard({ auction }: { auction: AuctionCardData }) {
         </div>
         <Link
           href={`/auctions/${auction.id}`}
-          className="line-clamp-2 text-2xl font-semibold leading-tight text-slate-900 transition group-hover:text-brand-700 dark:text-white dark:group-hover:text-brand-200"
+          className="line-clamp-2 text-2xl font-black uppercase italic leading-tight tracking-tight text-stone-900 transition group-hover:text-red-700"
         >
           {auction.title}
         </Link>
       </CardHeader>
       <CardContent className="pb-4">
-        <div className="rounded-2xl bg-slate-100 p-4 dark:bg-slate-900">
+        <div className="rounded-2xl bg-stone-100 p-4">
           <div className="flex items-end justify-between gap-4">
             <div>
-              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+              <p className="text-xs font-medium uppercase tracking-wide text-stone-500">
                 {isPerHead ? "Current bid / head" : "Current bid"}
               </p>
-              <p className="mt-1 text-3xl font-semibold tracking-tight text-slate-950 dark:text-slate-50">
+              <p className="mt-1 text-3xl font-semibold tracking-tight text-stone-950">
                 {formatZar(auction.current_price)}
               </p>
               {isPerHead ? (
-                <p className="mt-1 text-xs text-slate-500">
+                <p className="mt-1 text-xs text-stone-500">
                   Total for packet: {formatZar(packetTotal)} ({auction.animal_count ?? 1} head)
                 </p>
               ) : null}
             </div>
-            <p className="text-xs text-slate-500">{auction.status === "ended" ? "Closed" : "Live updates"}</p>
+            <p className="text-xs text-stone-500">{auction.status === "ended" ? "Closed" : "Live updates"}</p>
           </div>
         </div>
       </CardContent>
       <CardFooter className="pt-0">
-        <Button asChild className="h-11 w-full rounded-xl text-base font-semibold">
+        <Button asChild className="h-11 w-full rounded-xl bg-red-700 text-base font-semibold text-white hover:bg-stone-900">
           <Link href={`/auctions/${auction.id}`}>
-            Place bid
+            {ctaLabel}
             <ArrowUpRight className="ml-2 h-4 w-4" />
           </Link>
         </Button>

@@ -7,14 +7,30 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { buildBrowserRedirectUrl } from "@/lib/auth/redirect";
 import { Button } from "@/components/ui/button";
 
-export function GoogleAuthButton({ mode }: { mode: "signin" | "signup" }) {
+function sanitizeNextPath(nextPath?: string) {
+  if (!nextPath || !nextPath.startsWith("/")) {
+    return "/dashboard";
+  }
+
+  return nextPath;
+}
+
+export function GoogleAuthButton({
+  mode,
+  nextPath,
+}: {
+  mode: "signin" | "signup";
+  nextPath?: string;
+}) {
   const [loading, setLoading] = useState(false);
 
   const handleGoogleAuth = async () => {
     setLoading(true);
     try {
       const supabase = createSupabaseBrowserClient();
-      const redirectTo = buildBrowserRedirectUrl("/auth/callback?next=/dashboard");
+      const safeNextPath = sanitizeNextPath(nextPath);
+      const callbackParams = new URLSearchParams({ next: safeNextPath });
+      const redirectTo = buildBrowserRedirectUrl(`/auth/callback?${callbackParams.toString()}`);
 
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",

@@ -12,6 +12,13 @@ import type {
   StartLivestreamInput,
 } from "@/lib/validation/livestream";
 import type { SettingsUpdateInput } from "@/lib/validation/settings";
+import {
+  configureCloudflareLiveInputForLowLatency,
+  createCloudflareLiveInput,
+  isCloudflareConfigured,
+  retrieveCloudflareLiveInput,
+  toCloudflarePlaybackUrl,
+} from "@/lib/livestream/cloudflare";
 
 async function canManageAuction(
   supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
@@ -487,6 +494,12 @@ export async function startLivestream(params: {
     throw new Error("Not authorized to start livestream");
   }
 
+  if (!isCloudflareConfigured()) {
+    throw new Error(
+      "Cloudflare Stream is not configured. Set CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_STREAM_API_TOKEN, and CLOUDFLARE_STREAM_CUSTOMER_CODE.",
+    );
+  }
+
   const { data, error } = await supabase.rpc("start_livestream", {
     p_auction_id: params.auctionId,
     p_audio_enabled: params.payload.audio_enabled ?? true,
@@ -497,7 +510,143 @@ export async function startLivestream(params: {
     throw new Error(error.message);
   }
 
-  return data;
+  const sessionId = (data as { session_id?: string } | null)?.session_id;
+  if (!sessionId) {
+    throw new Error("Livestream session was created without a session ID");
+  }
+
+  try {
+    const admin = createSupabaseAdminClient() as any;
+    const { data: sessionRow, error: sessionError } = await admin
+      .from("auction_livestream_sessions")
+      .select("id,mux_live_stream_id,mux_playback_id,mux_stream_key,mux_ingest_url,mux_latency_mode")
+      .eq("id", sessionId)
+      .maybeSingle();
+
+    if (sessionError) {
+      throw new Error(sessionError.message);
+    }
+
+    if (!sessionRow) {
+      throw new Error("Livestream session could not be loaded");
+    }
+
+    let muxLiveStreamId = sessionRow.mux_live_stream_id as string | null;
+    let muxPlaybackId = sessionRow.mux_playback_id as string | null;
+    let muxStreamKey = sessionRow.mux_stream_key as string | null;
+    let muxIngestUrl = sessionRow.mux_ingest_url as string | null;
+    let muxLatencyMode = (sessionRow.mux_latency_mode as string | null) ?? "standard";
+
+    if (!muxLiveStreamId || !muxPlaybackId || !muxStreamKey || !muxIngestUrl) {
+      const { data: previousSession, error: previousSessionError } = await admin
+        .from("auction_livestream_sessions")
+        .select("mux_live_stream_id,mux_playback_id,mux_stream_key,mux_ingest_url")
+        .eq("auction_id", params.auctionId)
+        .not("mux_live_stream_id", "is", null)
+        .neq("id", sessionId)
+        .order("started_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (previousSessionError) {
+        throw new Error(previousSessionError.message);
+      }
+
+      if (previousSession?.mux_live_stream_id) {
+        try {
+          const recovered = await retrieveCloudflareLiveInput(previousSession.mux_live_stream_id);
+          muxLiveStreamId = recovered.liveInputId;
+          muxPlaybackId = recovered.playbackId;
+          muxStreamKey = recovered.streamKey ?? (previousSession.mux_stream_key as string | null) ?? null;
+          muxIngestUrl = recovered.ingestUrl;
+        } catch {
+          // Ignore and create a new live input below.
+        }
+      }
+    }
+
+    if (muxLiveStreamId && (!muxPlaybackId || !muxStreamKey || !muxIngestUrl)) {
+      try {
+        const recovered = await retrieveCloudflareLiveInput(muxLiveStreamId);
+        muxPlaybackId = recovered.playbackId;
+        muxStreamKey = recovered.streamKey;
+        muxIngestUrl = recovered.ingestUrl;
+      } catch {
+        muxLiveStreamId = null;
+        muxPlaybackId = null;
+        muxStreamKey = null;
+        muxIngestUrl = null;
+      }
+    }
+
+    if (muxLiveStreamId) {
+      await configureCloudflareLiveInputForLowLatency(muxLiveStreamId);
+      muxLatencyMode = "low";
+    }
+
+    if (!muxLiveStreamId || !muxPlaybackId || !muxStreamKey || !muxIngestUrl) {
+      const createdCloudflareInput = await createCloudflareLiveInput({
+        name: `auction-${params.auctionId}`,
+      });
+
+      muxLiveStreamId = createdCloudflareInput.liveInputId;
+      muxPlaybackId = createdCloudflareInput.playbackId;
+      muxStreamKey = createdCloudflareInput.streamKey;
+      muxIngestUrl = createdCloudflareInput.ingestUrl;
+
+      const { error: updateError } = await admin
+        .from("auction_livestream_sessions")
+        .update({
+          mux_live_stream_id: muxLiveStreamId,
+          mux_playback_id: muxPlaybackId,
+          mux_stream_key: muxStreamKey,
+          mux_ingest_url: muxIngestUrl,
+          mux_latency_mode: muxLatencyMode,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", sessionId);
+
+      if (updateError) {
+        throw new Error(updateError.message);
+      }
+    } else {
+      const { error: updateError } = await admin
+        .from("auction_livestream_sessions")
+        .update({
+          mux_live_stream_id: muxLiveStreamId,
+          mux_playback_id: muxPlaybackId,
+          mux_stream_key: muxStreamKey,
+          mux_ingest_url: muxIngestUrl,
+          mux_latency_mode: muxLatencyMode,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", sessionId);
+
+      if (updateError) {
+        throw new Error(updateError.message);
+      }
+    }
+
+    return {
+      ...(data as Record<string, unknown>),
+      mux_live_stream_id: muxLiveStreamId,
+      mux_playback_id: muxPlaybackId,
+      mux_stream_key: muxStreamKey,
+      mux_ingest_url: muxIngestUrl,
+      mux_latency_mode: muxLatencyMode,
+      playback_url: muxPlaybackId ? toCloudflarePlaybackUrl(muxPlaybackId) : null,
+    };
+  } catch (providerError) {
+    try {
+      await supabase.rpc("stop_livestream", {
+        p_auction_id: params.auctionId,
+      });
+    } catch {
+      // Ignore rollback failures.
+    }
+
+    throw providerError instanceof Error ? providerError : new Error("Failed to initialize Cloudflare livestream");
+  }
 }
 
 export async function stopLivestream(params: { auctionId: string; actorId: string }) {

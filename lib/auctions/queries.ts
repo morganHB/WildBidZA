@@ -17,6 +17,8 @@ type AuctionSummary = AuctionRow & {
     muted: boolean;
   }[];
   current_price: number;
+  bid_count: number;
+  top_bidder_name?: string | null;
   is_favorited: boolean;
   has_active_stream: boolean;
 };
@@ -153,12 +155,20 @@ export async function getAuctions(filters: AuctionListFilter, userId?: string | 
   const auctionIds = filteredByStatus.map((row) => row.id);
 
   const highestByAuction = new Map<string, number>();
+  const topBidderByAuction = new Map<string, string | null>();
+  const bidCountByAuction = new Map<string, number>();
   const liveStreamAuctionIds = new Set<string>();
 
   if (auctionIds.length > 0) {
     const { data: bids, error: bidError } = await supabase
       .from("bids")
-      .select("auction_id,amount")
+      .select(
+        `
+        auction_id,
+        amount,
+        profile:profiles!bids_bidder_id_fkey(display_name)
+      `,
+      )
       .in("auction_id", auctionIds)
       .order("amount", { ascending: false });
 
@@ -167,8 +177,14 @@ export async function getAuctions(filters: AuctionListFilter, userId?: string | 
     }
 
     for (const bid of bids ?? []) {
+      bidCountByAuction.set(bid.auction_id, (bidCountByAuction.get(bid.auction_id) ?? 0) + 1);
       if (!highestByAuction.has(bid.auction_id)) {
         highestByAuction.set(bid.auction_id, bid.amount);
+        const profile = Array.isArray(bid.profile) ? bid.profile[0] : bid.profile;
+        topBidderByAuction.set(
+          bid.auction_id,
+          (profile as { display_name?: string | null } | null)?.display_name ?? "Bidder",
+        );
       }
     }
 
@@ -211,6 +227,8 @@ export async function getAuctions(filters: AuctionListFilter, userId?: string | 
     ...row,
     status: deriveStatus(row, nowIso),
     current_price: highestByAuction.get(row.id) ?? row.starting_bid,
+    bid_count: bidCountByAuction.get(row.id) ?? 0,
+    top_bidder_name: topBidderByAuction.get(row.id) ?? null,
     is_favorited: favorites.has(row.id),
     has_active_stream: liveStreamAuctionIds.has(row.id),
     images: [...(row.images ?? [])].sort((a, b) => a.sort_order - b.sort_order),
@@ -271,6 +289,11 @@ export async function getAuctionById(auctionId: string, userId?: string | null) 
     ended_at: string | null;
     audio_enabled: boolean;
     max_viewers: number;
+    mux_live_stream_id: string | null;
+    mux_playback_id: string | null;
+    mux_stream_key: string | null;
+    mux_ingest_url: string | null;
+    mux_latency_mode: string | null;
     created_at: string;
     updated_at: string;
   } | null = null;
@@ -301,7 +324,9 @@ export async function getAuctionById(auctionId: string, userId?: string | null) 
       }),
       supabase
         .from("auction_livestream_sessions")
-        .select("id,auction_id,host_user_id,is_live,started_at,ended_at,audio_enabled,max_viewers,created_at,updated_at")
+        .select(
+          "id,auction_id,host_user_id,is_live,started_at,ended_at,audio_enabled,max_viewers,mux_live_stream_id,mux_playback_id,mux_stream_key,mux_ingest_url,mux_latency_mode,created_at,updated_at",
+        )
         .eq("auction_id", auctionId)
         .eq("is_live", true)
         .is("ended_at", null)

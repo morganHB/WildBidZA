@@ -29,13 +29,13 @@ export function AuctionFilters({ categories }: { categories: Category[] }) {
   };
 
   return (
-    <div className="rounded-3xl border border-brand-100 bg-white/95 p-4 shadow-sm dark:border-brand-900/40 dark:bg-slate-900/90">
+    <div className="rounded-3xl border border-stone-200 bg-white p-4 shadow-sm">
       <div className="grid gap-3 lg:grid-cols-[1.4fr_1fr_1fr_0.8fr_0.8fr_1fr_auto]">
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
           <Input
             placeholder="Search breeds, species, titles..."
-            className="h-11 rounded-xl border-slate-200 bg-slate-50 pl-9 dark:border-slate-800 dark:bg-slate-950"
+            className="h-11 rounded-xl border-stone-200 bg-stone-50 pl-9"
             defaultValue={params.get("q") ?? ""}
             onKeyDown={(event) => {
               if (event.key === "Enter") {
@@ -45,7 +45,7 @@ export function AuctionFilters({ categories }: { categories: Category[] }) {
           />
         </div>
         <Select value={params.get("categoryId") ?? "all"} onValueChange={(value) => updateParam("categoryId", value)}>
-          <SelectTrigger className="h-11 rounded-xl border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950">
+          <SelectTrigger className="h-11 rounded-xl border-stone-200 bg-stone-50">
             <SelectValue placeholder="Category" />
           </SelectTrigger>
           <SelectContent>
@@ -58,7 +58,7 @@ export function AuctionFilters({ categories }: { categories: Category[] }) {
           </SelectContent>
         </Select>
         <Select value={params.get("province") ?? "all"} onValueChange={(value) => updateParam("province", value)}>
-          <SelectTrigger className="h-11 rounded-xl border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950">
+          <SelectTrigger className="h-11 rounded-xl border-stone-200 bg-stone-50">
             <SelectValue placeholder="Province" />
           </SelectTrigger>
           <SelectContent>
@@ -71,7 +71,7 @@ export function AuctionFilters({ categories }: { categories: Category[] }) {
           </SelectContent>
         </Select>
         <Select value={params.get("sort") ?? "ending_soon"} onValueChange={(value) => updateParam("sort", value)}>
-          <SelectTrigger className="h-11 rounded-xl border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950">
+          <SelectTrigger className="h-11 rounded-xl border-stone-200 bg-stone-50">
             <SelectValue placeholder="Sort" />
           </SelectTrigger>
           <SelectContent>
@@ -84,7 +84,7 @@ export function AuctionFilters({ categories }: { categories: Category[] }) {
           type="number"
           min={0}
           placeholder="Min R"
-          className="h-11 rounded-xl border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950"
+          className="h-11 rounded-xl border-stone-200 bg-stone-50"
           defaultValue={params.get("minPrice") ?? ""}
           onKeyDown={(event) => {
             if (event.key === "Enter") {
@@ -96,7 +96,7 @@ export function AuctionFilters({ categories }: { categories: Category[] }) {
           type="number"
           min={0}
           placeholder="Max R"
-          className="h-11 rounded-xl border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950"
+          className="h-11 rounded-xl border-stone-200 bg-stone-50"
           defaultValue={params.get("maxPrice") ?? ""}
           onKeyDown={(event) => {
             if (event.key === "Enter") {

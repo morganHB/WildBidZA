@@ -1,4 +1,4 @@
-import "dotenv/config";
+import "./load-env";
 
 const required = [
   "NEXT_PUBLIC_SUPABASE_URL",

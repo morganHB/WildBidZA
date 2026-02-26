@@ -35,10 +35,12 @@ export function ResetPasswordForm() {
   });
 
   return (
-    <Card className="w-full max-w-md">
+    <Card className="w-full max-w-md rounded-[2.5rem] border border-stone-200 bg-white shadow-[0_38px_95px_-42px_rgba(0,0,0,0.45)]">
       <CardHeader>
-        <CardTitle>Reset password</CardTitle>
-        <CardDescription>We will send a secure reset link to your inbox.</CardDescription>
+        <CardTitle className="text-3xl font-black uppercase italic tracking-tight text-stone-900">Reset password</CardTitle>
+        <CardDescription className="font-medium text-stone-500">
+          We will send a secure reset link to your inbox.
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <form className="space-y-4" onSubmit={onSubmit}>
@@ -46,10 +48,14 @@ export function ResetPasswordForm() {
             <Label htmlFor="email">Email</Label>
             <Input id="email" type="email" {...form.register("email")} />
             {form.formState.errors.email ? (
-              <p className="text-xs text-red-500">{form.formState.errors.email.message}</p>
+              <p className="text-xs text-red-600">{form.formState.errors.email.message}</p>
             ) : null}
           </div>
-          <Button type="submit" className="w-full" disabled={form.formState.isSubmitting}>
+          <Button
+            type="submit"
+            className="w-full rounded-xl bg-red-700 text-white hover:bg-stone-900"
+            disabled={form.formState.isSubmitting}
+          >
             {form.formState.isSubmitting ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : null}
             Send reset email
           </Button>
