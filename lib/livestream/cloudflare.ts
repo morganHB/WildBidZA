@@ -16,6 +16,15 @@ type CloudflareApiEnvelope<T> = {
 type CloudflareLiveInput = {
   uid?: string;
   enabled?: boolean;
+  status?:
+    | string
+    | {
+        current?: {
+          state?: string;
+          reason?: string;
+        } | null;
+      }
+    | null;
   rtmps?: {
     url?: string;
     streamKey?: string;
@@ -221,6 +230,17 @@ export async function getCloudflareLiveInputStatus(liveInputId: string) {
 
   if (input.enabled === false) {
     return "disabled" satisfies LivestreamStatus;
+  }
+
+  const currentState =
+    typeof input.status === "object" && input.status !== null
+      ? input.status.current?.state?.toLowerCase?.()
+      : typeof input.status === "string"
+        ? input.status.toLowerCase()
+        : null;
+
+  if (currentState === "connected" || currentState === "reconnected") {
+    return "active" satisfies LivestreamStatus;
   }
 
   const lifecycleStatus = await fetchCloudflareLifecycleStatus(liveInputId);

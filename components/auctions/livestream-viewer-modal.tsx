@@ -34,7 +34,7 @@ function toCloudflareIframeUrl(playbackUrl: string | null) {
 }
 
 export function LivestreamViewerModal({ auctionId, userId, open, onOpenChange }: ViewerModalProps) {
-  const { status, error, playbackUrl, viewerCount } = useAuctionLivestreamViewer({
+  const { status, error, playbackUrl, streamReady, viewerCount } = useAuctionLivestreamViewer({
     auctionId,
     userId,
     enabled: open,
@@ -50,7 +50,7 @@ export function LivestreamViewerModal({ auctionId, userId, open, onOpenChange }:
         </DialogHeader>
 
         <div className="relative flex items-center justify-center bg-black">
-          {iframeUrl ? (
+          {iframeUrl && streamReady ? (
             <iframe
               src={iframeUrl}
               className="h-[70vh] w-full max-h-[80vh] border-0 bg-black"
@@ -60,7 +60,7 @@ export function LivestreamViewerModal({ auctionId, userId, open, onOpenChange }:
             />
           ) : (
             <div className="flex h-[70vh] w-full max-h-[80vh] items-center justify-center bg-black text-sm text-slate-300">
-              Livestream feed is not ready yet.
+              Waiting for host video feed...
             </div>
           )}
 

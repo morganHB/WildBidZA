@@ -14,12 +14,14 @@ type JoinResponse = {
   viewer_count: number;
   started_at: string;
   is_live: boolean;
+  stream_ready?: boolean;
   playback_url: string;
   mux_playback_id: string;
 };
 
 type SessionStateResponse = {
   has_active_stream: boolean;
+  stream_ready?: boolean;
   session: {
     id: string;
     viewer_count: number;
@@ -122,6 +124,7 @@ export function useAuctionLivestreamViewer({
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [participantId, setParticipantId] = useState<string | null>(null);
   const [playbackUrl, setPlaybackUrl] = useState<string | null>(null);
+  const [streamReady, setStreamReady] = useState(false);
 
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const stateRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -163,6 +166,7 @@ export function useAuctionLivestreamViewer({
     leaveSessionRef.current = null;
     setSessionId(null);
     setPlaybackUrl(null);
+    setStreamReady(false);
   }, [auctionId, clearTimers, participantId]);
 
   useEffect(() => {
@@ -172,6 +176,7 @@ export function useAuctionLivestreamViewer({
       setStatus("idle");
       setError(null);
       setViewerCount(0);
+      setStreamReady(false);
       return;
     }
 
@@ -228,6 +233,16 @@ export function useAuctionLivestreamViewer({
         if (state.session.playback_url) {
           setPlaybackUrl(state.session.playback_url);
         }
+
+        const ready = Boolean(state.stream_ready);
+        setStreamReady(ready);
+        if (ready) {
+          setStatus("live");
+          setError(null);
+        } else {
+          setStatus("connecting");
+          setError("Waiting for host stream to connect...");
+        }
       } catch {
         // Ignore transient refresh failures.
       }
@@ -256,7 +271,15 @@ export function useAuctionLivestreamViewer({
         setSessionId(joined.session_id);
         setViewerCount(joined.viewer_count ?? 0);
         setPlaybackUrl(joined.playback_url);
-        setStatus("live");
+        const ready = Boolean(joined.stream_ready);
+        setStreamReady(ready);
+        if (ready) {
+          setStatus("live");
+          setError(null);
+        } else {
+          setStatus("connecting");
+          setError("Waiting for host stream to connect...");
+        }
 
         heartbeatRef.current = setInterval(() => {
           if (!leaveSessionRef.current) {
@@ -293,6 +316,7 @@ export function useAuctionLivestreamViewer({
     status,
     error,
     playbackUrl,
+    streamReady,
     viewerCount,
     sessionId,
   };
