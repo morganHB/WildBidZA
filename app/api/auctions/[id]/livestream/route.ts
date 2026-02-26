@@ -167,8 +167,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       streamStatus = null;
     }
 
-    if (streamStatus !== "active") {
-      throw new Error("Host encoder is not live yet. Ask the host to start camera broadcast.");
+    if (streamStatus === "disabled") {
+      throw new Error("Livestream is currently unavailable. Please ask the host to restart it.");
     }
 
     const playbackUrl = safeToPlaybackUrl(session.mux_playback_id);
@@ -190,6 +190,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         viewer_count: activeCount,
         started_at: session.started_at,
         is_live: session.is_live,
+        stream_ready: streamStatus === "active",
         mux_playback_id: session.mux_playback_id,
         playback_url: playbackUrl,
       },
