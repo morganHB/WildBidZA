@@ -607,6 +607,7 @@ export async function startLivestream(params: {
       const { error: updateError } = await admin
         .from("auction_livestream_sessions")
         .update({
+          mux_live_stream_id: muxLiveStreamId,
           mux_playback_id: muxPlaybackId,
           mux_stream_key: muxStreamKey,
           mux_ingest_url: muxIngestUrl,

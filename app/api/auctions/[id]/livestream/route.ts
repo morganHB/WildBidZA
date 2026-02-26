@@ -53,10 +53,11 @@ export async function GET(_: Request, context: { params: Promise<{ id: string }>
 
     const isHost = Boolean(user?.id && session?.host_user_id && user.id === session.host_user_id);
     const playbackUrl = safeToPlaybackUrl(session?.mux_playback_id);
+    const statusInputId = session?.mux_live_stream_id ?? session?.mux_playback_id ?? null;
     let muxStatus: "active" | "idle" | "disabled" | null = null;
-    if (session?.mux_live_stream_id) {
+    if (statusInputId) {
       try {
-        muxStatus = await getCloudflareLiveInputStatus(session.mux_live_stream_id);
+        muxStatus = await getCloudflareLiveInputStatus(statusInputId);
       } catch {
         muxStatus = null;
       }
@@ -156,13 +157,14 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       throw new Error("Livestream is still preparing. Please try again in a few seconds.");
     }
 
-    if (!session.mux_live_stream_id) {
+    const statusInputId = session.mux_live_stream_id ?? session.mux_playback_id;
+    if (!statusInputId) {
       throw new Error("Livestream is still preparing. Please try again in a few seconds.");
     }
 
     let streamStatus: "active" | "idle" | "disabled" | null = null;
     try {
-      streamStatus = await getCloudflareLiveInputStatus(session.mux_live_stream_id);
+      streamStatus = await getCloudflareLiveInputStatus(statusInputId);
     } catch {
       streamStatus = null;
     }
